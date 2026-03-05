@@ -1,0 +1,39 @@
+data:
+  symbols:
+    - AAPL
+    - MSFT
+    - GOOGL
+  start_date: "2020-01-01"
+  end_date: "2024-12-31"
+  data_source: "csv"
+  data_path: "data/sample"
+
+execution:
+  initial_capital: 100000.0
+  commission_pct: 0.001
+  slippage_pct: 0.0005
+
+strategy:
+  name: "sma_crossover"
+  parameters:
+    short_window: 20
+    long_window: 50
+
+sizing:
+  method: "fixed_fraction"
+  parameters:
+    fraction: 0.05              # Small positions (5% of equity)
+
+risk:
+  enabled: true
+  max_position_pct: 0.05       # Max 5% per position
+  max_portfolio_exposure_pct: 0.50  # Max 50% total exposure
+  max_daily_loss_pct: 0.01     # Halt after 1% daily loss
+  max_drawdown_pct: 0.08       # Halt after 8% drawdown
+  max_open_positions: 5        # Max 5 simultaneous positions
+  max_orders_per_day: 20       # Max 20 orders per day
+
+optimization:
+  method: "none"
+  rebalance_frequency: 20
+  parameters: {}
