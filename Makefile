@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install install-dev lint format type-check test test-cov clean help run
+.PHONY: install install-dev lint format type-check test test-cov clean help run run-baseline run-vol run-meanvar run-riskparity run-compare
 
 # Default target
 help:
@@ -15,7 +15,12 @@ help:
 	@echo "  make test         Run tests"
 	@echo "  make test-cov     Run tests with coverage"
 	@echo "  make check        Run all checks (format, lint, type-check, test)"
-	@echo "  make run          Run backtest"
+	@echo "  make run          Run backtest (default config)"
+	@echo "  make run-compare  Compare all Phase 2 strategies side-by-side"
+	@echo "  make run-baseline Run baseline (fixed sizing, no risk)"
+	@echo "  make run-vol      Run volatility sizing + risk management"
+	@echo "  make run-meanvar  Run mean-variance optimized portfolio"
+	@echo "  make run-riskparity Run risk parity optimized portfolio"
 	@echo "  make clean        Remove cache files"
 	@echo ""
 
@@ -77,3 +82,20 @@ download-data:
 # Run backtest (downloads data first if needed)
 run: download-data
 	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_config.yaml
+
+# Run individual Phase 2 configs
+run-baseline: download-data
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_baseline.yaml
+
+run-vol: download-data
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_vol.yaml
+
+run-meanvar: download-data
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_meanvar.yaml
+
+run-riskparity: download-data
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_riskparity.yaml
+
+# Compare all Phase 2 configs side-by-side
+run-compare: download-data
+	$(PYTHON) ./scripts/run_comparison.py
