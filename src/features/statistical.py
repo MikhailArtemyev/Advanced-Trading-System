@@ -229,7 +229,11 @@ class VolatilityFeature(FeatureGenerator):
             short_w = min(self.windows)
             long_w = max(self.windows)
             long_vol = features[f"vol_{long_w}"].replace(0, np.nan)
-            features[f"vol_ratio_{short_w}_{long_w}"] = features[f"vol_{short_w}"] / long_vol
+            features[f"vol_ratio_{short_w}_{long_w}"] = (
+                features[f"vol_{short_w}"] / long_vol
+            )
 
         names = list(features.columns)
-        return FeatureResult(features=features, feature_names=names, method="volatility")
+        return FeatureResult(
+            features=features, feature_names=names, method="volatility"
+        )

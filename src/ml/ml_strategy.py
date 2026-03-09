@@ -107,8 +107,6 @@ class MLStrategy(Strategy):
                     timestamp, symbol, SignalType.SHORT, strength=pred.confidence
                 )
         elif abs(pred.signal) < self.exit_threshold and current_pos != 0:
-            return self._create_signal(
-                timestamp, symbol, SignalType.EXIT, strength=1.0
-            )
+            return self._create_signal(timestamp, symbol, SignalType.EXIT, strength=1.0)
 
         return None

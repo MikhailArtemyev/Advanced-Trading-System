@@ -52,7 +52,9 @@ class LightGBMSignalModel(MLModel):
         **extra_params: Any,
     ) -> None:
         if mode not in ("classification", "regression"):
-            raise ValueError(f"mode must be 'classification' or 'regression', got '{mode}'")
+            raise ValueError(
+                f"mode must be 'classification' or 'regression', got '{mode}'"
+            )
 
         self.mode = mode
         self.n_estimators = n_estimators
@@ -86,7 +88,9 @@ class LightGBMSignalModel(MLModel):
         self.feature_names = list(features.columns)
 
         if self.mode == "classification" and target.nunique() < 2:
-            raise ValueError("Target must have at least 2 classes for classification mode")
+            raise ValueError(
+                "Target must have at least 2 classes for classification mode"
+            )
 
         if self.mode == "classification":
             self._model = lgb.LGBMClassifier(

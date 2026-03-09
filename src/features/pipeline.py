@@ -147,5 +147,7 @@ class FeaturePipeline:
             frames.append(result.features)
             all_names.extend(result.feature_names)
 
-        all_features = pd.concat(frames, axis=1) if frames else pd.DataFrame(index=ohlcv.index)
+        all_features = (
+            pd.concat(frames, axis=1) if frames else pd.DataFrame(index=ohlcv.index)
+        )
         return all_features, all_names

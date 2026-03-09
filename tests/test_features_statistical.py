@@ -16,6 +16,7 @@ from src.features.statistical import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_ohlcv(
     n: int = 100,
     start_price: float = 100.0,
@@ -56,7 +57,9 @@ def _make_flat_ohlcv(n: int = 50, price: float = 100.0) -> pd.DataFrame:
     )
 
 
-def _make_trending_ohlcv(n: int = 500, rho: float = 0.7, seed: int = 99) -> pd.DataFrame:
+def _make_trending_ohlcv(
+    n: int = 500, rho: float = 0.7, seed: int = 99
+) -> pd.DataFrame:
     """Positively autocorrelated returns — designed to produce Hurst > 0.5.
 
     Uses an AR(1) process with positive autocorrelation so returns persist
@@ -89,6 +92,7 @@ def _make_mean_reverting_ohlcv(n: int = 250) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # ReturnFeature
 # ---------------------------------------------------------------------------
+
 
 class TestReturnFeature:
     def test_default_horizons(self) -> None:
@@ -130,7 +134,13 @@ class TestReturnFeature:
         dates = pd.date_range("2020-01-01", periods=n, freq="B")
         prices = np.arange(1.0, n + 1.0)
         df = pd.DataFrame(
-            {"open": prices, "high": prices, "low": prices, "close": prices, "volume": 1},
+            {
+                "open": prices,
+                "high": prices,
+                "low": prices,
+                "close": prices,
+                "volume": 1,
+            },
             index=dates,
         )
         result = ReturnFeature([5]).compute(df)
@@ -161,6 +171,7 @@ class TestReturnFeature:
 # ---------------------------------------------------------------------------
 # ZScoreFeature
 # ---------------------------------------------------------------------------
+
 
 class TestZScoreFeature:
     def test_default_window(self) -> None:
@@ -199,7 +210,13 @@ class TestZScoreFeature:
         dates = pd.date_range("2020-01-01", periods=n, freq="B")
         prices = np.arange(1.0, n + 1.0)
         df = pd.DataFrame(
-            {"open": prices, "high": prices, "low": prices, "close": prices, "volume": 1},
+            {
+                "open": prices,
+                "high": prices,
+                "low": prices,
+                "close": prices,
+                "volume": 1,
+            },
             index=dates,
         )
         result = ZScoreFeature(10).compute(df)
@@ -227,6 +244,7 @@ class TestZScoreFeature:
 # ---------------------------------------------------------------------------
 # HigherMomentFeature
 # ---------------------------------------------------------------------------
+
 
 class TestHigherMomentFeature:
     def test_default_window(self) -> None:
@@ -275,7 +293,13 @@ class TestHigherMomentFeature:
         returns[50] = 0.20  # large positive outlier
         prices = 100.0 * np.exp(np.cumsum(returns))
         df = pd.DataFrame(
-            {"open": prices, "high": prices, "low": prices, "close": prices, "volume": 1},
+            {
+                "open": prices,
+                "high": prices,
+                "low": prices,
+                "close": prices,
+                "volume": 1,
+            },
             index=dates,
         )
         result = HigherMomentFeature(window=30).compute(df)
@@ -292,6 +316,7 @@ class TestHigherMomentFeature:
 # ---------------------------------------------------------------------------
 # HurstExponentFeature
 # ---------------------------------------------------------------------------
+
 
 class TestHurstExponentFeature:
     def test_default_window(self) -> None:
@@ -359,6 +384,7 @@ class TestHurstExponentFeature:
 # VolatilityFeature
 # ---------------------------------------------------------------------------
 
+
 class TestVolatilityFeature:
     def test_default_windows(self) -> None:
         assert VolatilityFeature().windows == [5, 20, 60]
@@ -402,7 +428,13 @@ class TestVolatilityFeature:
         daily_r = 0.01  # 1% per day
         prices = 100.0 * (1 + daily_r) ** np.arange(n)
         df = pd.DataFrame(
-            {"open": prices, "high": prices, "low": prices, "close": prices, "volume": 1},
+            {
+                "open": prices,
+                "high": prices,
+                "low": prices,
+                "close": prices,
+                "volume": 1,
+            },
             index=dates,
         )
         result = VolatilityFeature([20]).compute(df)

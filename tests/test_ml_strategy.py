@@ -18,6 +18,7 @@ from src.ml.ml_strategy import MLStrategy
 # Stubs
 # ---------------------------------------------------------------------------
 
+
 class StubMLModel(MLModel):
     """Controllable stub that returns pre-set predictions."""
 
@@ -107,6 +108,7 @@ class StubDataHandler:
 # Construction
 # ---------------------------------------------------------------------------
 
+
 class TestMLStrategyConstruction:
     def test_initialization(self) -> None:
         pipeline = FeaturePipeline([SMAFeature([5])])
@@ -148,6 +150,7 @@ class TestMLStrategyConstruction:
 # ---------------------------------------------------------------------------
 # Signal Generation
 # ---------------------------------------------------------------------------
+
 
 class TestMLStrategySignals:
     def _make_strategy(
@@ -238,7 +241,9 @@ class TestMLStrategySignals:
         pipeline = FeaturePipeline([SMAFeature([5])])
         model = StubMLModel(signal=0.5, confidence=0.8)
         strategy = MLStrategy(
-            ["AAPL", "GOOG"], pipeline, model,
+            ["AAPL", "GOOG"],
+            pipeline,
+            model,
             parameters={"lookback_bars": 100},
         )
         # StubDataHandler ignores symbol, so both get the same data
@@ -265,6 +270,7 @@ class TestMLStrategySignals:
 # ---------------------------------------------------------------------------
 # Integration — real pipeline + real XGBoost
 # ---------------------------------------------------------------------------
+
 
 class TestMLStrategyIntegration:
     def test_end_to_end_with_xgboost(self) -> None:
@@ -296,7 +302,9 @@ class TestMLStrategyIntegration:
 
         # Create strategy and run
         strategy = MLStrategy(
-            ["TEST"], pipeline, model,
+            ["TEST"],
+            pipeline,
+            model,
             parameters={"lookback_bars": 200, "signal_threshold": 0.0},
         )
 
@@ -309,5 +317,9 @@ class TestMLStrategyIntegration:
         assert len(signals) >= 1
         for sig in signals:
             assert isinstance(sig, SignalEvent)
-            assert sig.signal_type in (SignalType.LONG, SignalType.SHORT, SignalType.EXIT)
+            assert sig.signal_type in (
+                SignalType.LONG,
+                SignalType.SHORT,
+                SignalType.EXIT,
+            )
             assert 0.0 <= sig.strength <= 1.0

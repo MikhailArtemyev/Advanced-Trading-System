@@ -12,6 +12,7 @@ from src.ml.xgboost_model import XGBoostSignalModel
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_classification_data(
     n: int = 500, n_features: int = 10, seed: int = 42
 ) -> tuple[pd.DataFrame, pd.Series]:
@@ -35,15 +36,14 @@ def _make_regression_data(
         rng.standard_normal((n, n_features)),
         columns=[f"feat_{i}" for i in range(n_features)],
     )
-    y = pd.Series(
-        X["feat_0"] * 0.001 + rng.standard_normal(n) * 0.005, name="target"
-    )
+    y = pd.Series(X["feat_0"] * 0.001 + rng.standard_normal(n) * 0.005, name="target")
     return X, y
 
 
 # ---------------------------------------------------------------------------
 # ModelPrediction
 # ---------------------------------------------------------------------------
+
 
 class TestModelPrediction:
     def test_creation(self) -> None:
@@ -60,6 +60,7 @@ class TestModelPrediction:
 # ---------------------------------------------------------------------------
 # TrainResult
 # ---------------------------------------------------------------------------
+
 
 class TestTrainResult:
     def test_creation_all_fields(self) -> None:
@@ -86,6 +87,7 @@ class TestTrainResult:
 # MLModel ABC
 # ---------------------------------------------------------------------------
 
+
 class TestMLModelABC:
     def test_cannot_instantiate(self) -> None:
         with pytest.raises(TypeError):
@@ -95,6 +97,7 @@ class TestMLModelABC:
 # ---------------------------------------------------------------------------
 # XGBoost — Classification
 # ---------------------------------------------------------------------------
+
 
 class TestXGBoostClassification:
     def test_train_returns_train_result(self) -> None:
@@ -247,6 +250,7 @@ class TestXGBoostClassification:
 # XGBoost — Regression
 # ---------------------------------------------------------------------------
 
+
 class TestXGBoostRegression:
     def test_train_regression_mode(self) -> None:
         X, y = _make_regression_data()
@@ -301,6 +305,7 @@ class TestXGBoostRegression:
 # ---------------------------------------------------------------------------
 # LightGBM — Classification
 # ---------------------------------------------------------------------------
+
 
 class TestLightGBMClassification:
     def test_train_returns_train_result(self) -> None:
@@ -445,6 +450,7 @@ class TestLightGBMClassification:
 # ---------------------------------------------------------------------------
 # LightGBM — Regression
 # ---------------------------------------------------------------------------
+
 
 class TestLightGBMRegression:
     def test_train_regression_mode(self) -> None:
