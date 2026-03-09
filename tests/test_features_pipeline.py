@@ -12,6 +12,7 @@ from src.features.technical import ATRFeature, RSIFeature, SMAFeature
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_ohlcv(n: int = 300, seed: int = 42) -> pd.DataFrame:
     """Build a synthetic OHLCV DataFrame with n bars."""
     rng = np.random.default_rng(seed)
@@ -33,6 +34,7 @@ def _make_ohlcv(n: int = 300, seed: int = 42) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # PipelineResult
 # ---------------------------------------------------------------------------
+
 
 class TestPipelineResult:
     def test_creation_all_fields(self) -> None:
@@ -62,9 +64,12 @@ class TestPipelineResult:
 # FeaturePipeline — construction
 # ---------------------------------------------------------------------------
 
+
 class TestFeaturePipelineConstruction:
     def test_empty_generators_raises(self) -> None:
-        with pytest.raises(ValueError, match="At least one FeatureGenerator is required"):
+        with pytest.raises(
+            ValueError, match="At least one FeatureGenerator is required"
+        ):
             FeaturePipeline([])
 
     def test_single_generator_total_lookback(self) -> None:
@@ -86,6 +91,7 @@ class TestFeaturePipelineConstruction:
 # ---------------------------------------------------------------------------
 # FeaturePipeline.run()
 # ---------------------------------------------------------------------------
+
 
 class TestFeaturePipelineRun:
     def test_returns_pipeline_result(self) -> None:
@@ -213,6 +219,7 @@ class TestFeaturePipelineRun:
 # FeaturePipeline.compute_features_only()
 # ---------------------------------------------------------------------------
 
+
 class TestFeaturePipelineComputeFeaturesOnly:
     def test_returns_dataframe(self) -> None:
         pipeline = FeaturePipeline([SMAFeature([5])])
@@ -267,15 +274,18 @@ class TestFeaturePipelineComputeFeaturesOnly:
 # Integration — realistic full-pipeline scenario
 # ---------------------------------------------------------------------------
 
+
 class TestFeaturePipelineIntegration:
     def test_full_pipeline_sma_rsi_atr(self) -> None:
         """End-to-end with 3 generators on 500 bars."""
         ohlcv = _make_ohlcv(500)
-        pipeline = FeaturePipeline([
-            SMAFeature([5, 10, 20]),
-            RSIFeature(14),
-            ATRFeature(14),
-        ])
+        pipeline = FeaturePipeline(
+            [
+                SMAFeature([5, 10, 20]),
+                RSIFeature(14),
+                ATRFeature(14),
+            ]
+        )
         result = pipeline.run(ohlcv, target_horizon=5, target_type="return")
 
         assert not result.features.isna().any().any()
@@ -287,12 +297,14 @@ class TestFeaturePipelineIntegration:
     def test_full_pipeline_with_statistical_features(self) -> None:
         """Pipeline mixing technical + statistical generators."""
         ohlcv = _make_ohlcv(500)
-        pipeline = FeaturePipeline([
-            SMAFeature([10, 20]),
-            RSIFeature(14),
-            ReturnFeature([1, 5]),
-            ZScoreFeature(20),
-        ])
+        pipeline = FeaturePipeline(
+            [
+                SMAFeature([10, 20]),
+                RSIFeature(14),
+                ReturnFeature([1, 5]),
+                ZScoreFeature(20),
+            ]
+        )
         result = pipeline.run(ohlcv, target_horizon=10, target_type="direction")
 
         assert not result.features.isna().any().any()

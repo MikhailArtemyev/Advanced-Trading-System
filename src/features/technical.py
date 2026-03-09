@@ -133,7 +133,11 @@ class MACDFeature(FeatureGenerator):
 
         names = ["macd", "macd_signal", "macd_histogram"]
         features = pd.DataFrame(
-            {"macd": macd_line, "macd_signal": signal_line, "macd_histogram": histogram},
+            {
+                "macd": macd_line,
+                "macd_signal": signal_line,
+                "macd_histogram": histogram,
+            },
             index=ohlcv.index,
         )
         return FeatureResult(features=features, feature_names=names, method="macd")

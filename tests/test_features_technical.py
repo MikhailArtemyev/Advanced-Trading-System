@@ -17,6 +17,7 @@ from src.features.technical import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_ohlcv(
     n: int = 100,
     start_price: float = 100.0,
@@ -70,6 +71,7 @@ def _make_flat_ohlcv(n: int = 50, price: float = 100.0) -> pd.DataFrame:
 # FeatureResult
 # ---------------------------------------------------------------------------
 
+
 class TestFeatureResult:
     def test_creation_and_field_access(self) -> None:
         df = pd.DataFrame({"x": [1.0, 2.0]})
@@ -91,6 +93,7 @@ class TestFeatureResult:
 # FeatureGenerator ABC
 # ---------------------------------------------------------------------------
 
+
 class TestFeatureGeneratorABC:
     def test_cannot_instantiate_abc_directly(self) -> None:
         with pytest.raises(TypeError):
@@ -100,6 +103,7 @@ class TestFeatureGeneratorABC:
 # ---------------------------------------------------------------------------
 # SMAFeature
 # ---------------------------------------------------------------------------
+
 
 class TestSMAFeature:
     def test_default_windows(self) -> None:
@@ -112,14 +116,25 @@ class TestSMAFeature:
 
     def test_feature_names_correct(self) -> None:
         result = SMAFeature([5, 10]).compute(_make_ohlcv(50))
-        assert result.feature_names == ["sma_5", "sma_5_ratio", "sma_10", "sma_10_ratio"]
+        assert result.feature_names == [
+            "sma_5",
+            "sma_5_ratio",
+            "sma_10",
+            "sma_10_ratio",
+        ]
         assert result.method == "sma"
 
     def test_sma_formula_known_series(self) -> None:
         """With window=3 and close = [1,2,3,4,5], sma_3 = [NaN,NaN,2,3,4]."""
         dates = pd.date_range("2020-01-01", periods=5, freq="B")
         df = pd.DataFrame(
-            {"open": 1, "high": 1, "low": 1, "close": [1.0, 2.0, 3.0, 4.0, 5.0], "volume": 1},
+            {
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": [1.0, 2.0, 3.0, 4.0, 5.0],
+                "volume": 1,
+            },
             index=dates,
         )
         result = SMAFeature([3]).compute(df)
@@ -161,6 +176,7 @@ class TestSMAFeature:
 # RSIFeature
 # ---------------------------------------------------------------------------
 
+
 class TestRSIFeature:
     def test_default_period(self) -> None:
         assert RSIFeature().period == 14
@@ -191,7 +207,13 @@ class TestRSIFeature:
         dates = pd.date_range("2020-01-01", periods=30, freq="B")
         prices = np.arange(1.0, 31.0)  # monotonically increasing
         df = pd.DataFrame(
-            {"open": prices, "high": prices, "low": prices, "close": prices, "volume": 1},
+            {
+                "open": prices,
+                "high": prices,
+                "low": prices,
+                "close": prices,
+                "volume": 1,
+            },
             index=dates,
         )
         result = RSIFeature(14).compute(df)
@@ -203,7 +225,13 @@ class TestRSIFeature:
         dates = pd.date_range("2020-01-01", periods=30, freq="B")
         prices = np.arange(30.0, 0.0, -1.0)  # monotonically decreasing
         df = pd.DataFrame(
-            {"open": prices, "high": prices, "low": prices, "close": prices, "volume": 1},
+            {
+                "open": prices,
+                "high": prices,
+                "low": prices,
+                "close": prices,
+                "volume": 1,
+            },
             index=dates,
         )
         result = RSIFeature(14).compute(df)
@@ -228,6 +256,7 @@ class TestRSIFeature:
 # ---------------------------------------------------------------------------
 # MACDFeature
 # ---------------------------------------------------------------------------
+
 
 class TestMACDFeature:
     def test_default_params(self) -> None:
@@ -282,6 +311,7 @@ class TestMACDFeature:
 # ---------------------------------------------------------------------------
 # BollingerBandFeature
 # ---------------------------------------------------------------------------
+
 
 class TestBollingerBandFeature:
     def test_default_params(self) -> None:
@@ -346,6 +376,7 @@ class TestBollingerBandFeature:
 # ---------------------------------------------------------------------------
 # ATRFeature
 # ---------------------------------------------------------------------------
+
 
 class TestATRFeature:
     def test_default_period(self) -> None:
