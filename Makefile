@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install install-dev lint format type-check test test-cov clean help run run-baseline run-vol run-meanvar run-riskparity run-compare
+.PHONY: install install-dev lint format type-check test test-cov clean help run run-baseline run-vol run-meanvar run-riskparity run-compare report
 
 # Default target
 help:
@@ -21,6 +21,7 @@ help:
 	@echo "  make run-vol      Run volatility sizing + risk management"
 	@echo "  make run-meanvar  Run mean-variance optimized portfolio"
 	@echo "  make run-riskparity Run risk parity optimized portfolio"
+	@echo "  make report       Run ALL configs and generate full comparison report"
 	@echo "  make clean        Remove cache files"
 	@echo ""
 
@@ -99,3 +100,7 @@ run-riskparity: download-data
 # Compare all Phase 2 configs side-by-side
 run-compare: download-data
 	$(PYTHON) ./scripts/run_comparison.py
+
+# Full report: run ALL configs, generate report + charts
+report: download-data
+	$(PYTHON) ./scripts/run_full_report.py
