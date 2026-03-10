@@ -242,7 +242,6 @@ make run-baseline     # Baseline (no risk management)
 make run-vol          # Volatility sizing
 make run-meanvar      # Mean-variance optimization
 make run-riskparity   # Risk parity optimization
-make run-compare      # Compare Phase 2 configs side-by-side
 make report           # Run ALL configs, generate comparison report + charts
 ```
 
