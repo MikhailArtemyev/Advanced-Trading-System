@@ -1,0 +1,44 @@
+# Phase 2 — Volatility sizing + risk management
+# Sizes positions inversely to volatility, with drawdown protection
+data:
+  symbols:
+    - AAPL
+    - MSFT
+    - GOOGL
+  start_date: "2020-01-01"
+  end_date: "2024-12-31"
+  data_source: "csv"
+  data_path: "data/sample"
+
+execution:
+  initial_capital: 100000.0
+  commission_pct: 0.001
+  slippage_pct: 0.0005
+
+strategy:
+  name: "sma_crossover"
+  parameters:
+    short_window: 20
+    long_window: 50
+
+sizing:
+  method: "volatility"
+  parameters:
+    risk_fraction: 0.02
+    atr_period: 14
+    atr_multiplier: 2.0
+    max_position_fraction: 0.20
+
+risk:
+  enabled: true
+  max_position_pct: 0.20
+  max_portfolio_exposure_pct: 0.80
+  max_daily_loss_pct: 0.02
+  max_drawdown_pct: 0.12
+  max_open_positions: 10
+  max_orders_per_day: 50
+
+optimization:
+  method: "none"
+  rebalance_frequency: 20
+  parameters: {}

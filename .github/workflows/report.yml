@@ -1,0 +1,40 @@
+name: Strategy Report
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "configs/**"
+      - "scripts/run_full_report.py"
+      - "scripts/run_backtest.py"
+
+jobs:
+  report:
+    name: Generate Strategy Report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download sample data
+        run: python scripts/download_data.py --symbols AAPL MSFT GOOGL
+
+      - name: Generate report
+        run: python scripts/run_full_report.py
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-report
+          path: |
+            output/strategy_report.md
+            output/*.png

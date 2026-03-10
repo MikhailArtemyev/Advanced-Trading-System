@@ -24,12 +24,18 @@ Events go into a queue and get processed one by one before moving to the next da
 ### Key Components
 
 - **DataHandler** — loads CSV or yfinance price data, feeds it bar-by-bar. Only gives the strategy data up to "today" (no peeking at the future).
-- **Strategy** — decides when to buy/sell. SMA crossover or multi-asset SMA with portfolio optimization.
+- **Strategy** — decides when to buy/sell. SMA crossover, multi-asset SMA with portfolio optimization, or ML-driven signal generation.
 - **Portfolio** — tracks positions (long and short), cash, and P&L. Converts signals into sized orders using a PositionSizer.
 - **PositionSizer** — determines how many shares to trade. Three methods: fixed fraction, volatility-based (ATR), and Kelly criterion.
 - **RiskManager** — pre-trade risk checks: max drawdown circuit breaker, daily loss limit, order rate limit, position concentration, portfolio exposure.
 - **ExecutionHandler** — simulates filling orders with realistic slippage and commission costs.
 - **PortfolioOptimizer** — computes target allocation weights across multiple assets. Mean-variance (max Sharpe or min variance) and risk parity methods.
+- **FeaturePipeline** — composable feature engineering: 10 generators (SMA, RSI, MACD, Bollinger, ATR, returns, z-score, higher moments, Hurst, volatility). Produces clean, NaN-free feature matrices for ML models.
+- **ML Models** — XGBoost and LightGBM signal models behind a common `MLModel` ABC. Classification (direction) or regression (return) modes. `MLStrategy` bridges predictions into the event loop.
+- **CPCV Validator** — combinatorial purged cross-validation for financial ML. Generates C(N,k) train/test paths with purging and embargo to prevent information leakage.
+- **Deflated Sharpe Ratio** — statistical test adjusting Sharpe ratios for multiple testing bias. Answers: "is this Sharpe real, or just luck from testing many strategies?"
+- **RegimeDetector** — Hidden Markov Model that classifies market periods as bull, bear, or sideways from return and volatility observations.
+- **ExperimentTracker** — MLflow wrapper for logging backtest parameters, metrics, and artifacts across runs.
 - **CorrelationTracker** — tracks rolling pairwise correlations between assets for portfolio monitoring.
 - **WalkForwardRunner** — walk-forward analysis with rolling train/test windows and walk-forward efficiency (WFE) calculation.
 - **PerformanceTracker** — calculates metrics (Sharpe, Sortino, Calmar, max drawdown, win rate, turnover, etc.) and generates reports.
@@ -73,13 +79,18 @@ trading_system/
 │   ├── optimization/       # Portfolio optimization (mean-variance, risk parity)
 │   ├── execution/          # Order execution simulation
 │   ├── performance/        # Performance metrics and visualization
-│   └── backtest/           # Backtest engine and walk-forward analysis
-├── tests/                  # 600+ unit and integration tests
-├── configs/                # Example configuration files
-├── scripts/                # Utility scripts (run_backtest, download_data)
+│   ├── backtest/           # Backtest engine and walk-forward analysis
+│   ├── features/           # Feature engineering pipeline (10 generators)
+│   ├── ml/                 # ML models (XGBoost, LightGBM) and MLStrategy
+│   ├── validation/         # CPCV cross-validation and Deflated Sharpe Ratio
+│   ├── regime/             # HMM regime detection (bull/bear/sideways)
+│   └── tracking/           # MLflow experiment tracking
+├── tests/                  # 997 unit and integration tests
+├── configs/                # Configuration files (9 configs)
+├── scripts/                # Utility scripts (run_backtest, download_data, reports)
 ├── data/                   # Market data (not in git)
 ├── notebooks/              # Jupyter notebooks
-└── output/                 # Backtest results
+└── output/                 # Backtest results and reports
 ```
 
 ## Configuration
@@ -109,7 +120,7 @@ execution:
 **strategy** — Strategy selection and parameters:
 ```yaml
 strategy:
-  name: "sma_crossover"
+  name: "sma_crossover"     # sma_crossover or ml_strategy
   parameters:
     short_window: 20
     long_window: 50
@@ -121,6 +132,47 @@ sizing:
   method: "fixed_fraction"   # fixed_fraction, volatility, or kelly
   parameters:
     fraction: 0.10           # 10% of equity per position
+```
+
+**features** — Feature engineering (for ML strategy):
+```yaml
+features:
+  technical:
+    - type: "sma"
+      windows: [5, 10, 20, 50]
+    - type: "rsi"
+      period: 14
+    - type: "macd"
+    - type: "bollinger"
+    - type: "atr"
+  statistical:
+    - type: "returns"
+      horizons: [1, 5, 10, 20]
+    - type: "zscore"
+    - type: "volatility"
+      windows: [5, 20, 60]
+  target:
+    horizon: 5
+    type: "direction"        # direction or return
+```
+
+**ml** — ML model configuration:
+```yaml
+ml:
+  model: "xgboost"           # xgboost or lightgbm
+  mode: "classification"     # classification or regression
+  parameters:
+    n_estimators: 200
+    max_depth: 4
+    learning_rate: 0.05
+```
+
+**regime** — Market regime detection (optional):
+```yaml
+regime:
+  enabled: false
+  n_regimes: 3
+  vol_window: 20
 ```
 
 **risk** — Risk management limits:
@@ -149,12 +201,14 @@ optimization:
 
 | Config | Description |
 |--------|-------------|
-| `backtest_config.yaml` | Default single-asset backtest |
+| `backtest_config.yaml` | Default single-asset SMA crossover |
+| `backtest_baseline.yaml` | Baseline (fixed 10%, no risk) |
+| `backtest_phase2_vol.yaml` | Volatility sizing + risk management |
+| `backtest_phase2_meanvar.yaml` | Mean-variance optimized portfolio |
+| `backtest_phase2_riskparity.yaml` | Risk parity allocation |
 | `kelly_sizing.yaml` | Kelly criterion position sizing |
-| `volatility_sizing.yaml` | ATR-based volatility sizing |
-| `mean_variance_optimization.yaml` | Mean-variance portfolio optimization |
-| `risk_parity_optimization.yaml` | Risk parity allocation |
 | `conservative_risk.yaml` | Tight risk limits example |
+| `ml_backtest_config.yaml` | ML strategy (XGBoost classification) |
 
 ## Development
 
@@ -179,12 +233,38 @@ ruff check src/ tests/
 mypy src/
 ```
 
+## Running Strategies
+
+```bash
+make run              # Default SMA crossover
+make run-ml           # ML strategy (XGBoost)
+make run-baseline     # Baseline (no risk management)
+make run-vol          # Volatility sizing
+make run-meanvar      # Mean-variance optimization
+make run-riskparity   # Risk parity optimization
+make report           # Run ALL configs, generate comparison report + charts
+```
+
 ## Adding New Strategies
 
 1. Create new file in `src/strategy/`
 2. Inherit from `Strategy` base class
 3. Implement `calculate_signals()` method
 
-## Phase 2 Status
+## Adding New ML Models
 
-COMPLETE — 600+ tests, all checks green.
+1. Create new file in `src/ml/`
+2. Inherit from `MLModel` ABC
+3. Implement `train()`, `predict()`, `save()`, `load()`, `get_feature_importance()`
+4. Add to `build_ml_model()` in `scripts/run_backtest.py`
+5. Add model name to `MLConfig.validate_model()` in `src/config.py`
+
+## Project Status
+
+Phase 3 COMPLETE — 997 tests, all checks green.
+
+| Phase | Focus | Tests |
+|-------|-------|-------|
+| 1 | Core backtesting engine, events, portfolio | ~300 |
+| 2 | Risk management, position sizing, optimization, walk-forward | ~600 |
+| 3 | Feature engineering, ML models, CPCV, DSR, regime detection | ~997 |
