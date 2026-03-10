@@ -170,9 +170,7 @@ def build_report(
 
     lines.append("# Strategy Comparison Report")
     lines.append("")
-    lines.append(
-        f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*"
-    )
+    lines.append(f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
     lines.append("")
 
     # --- Data summary ---
@@ -256,7 +254,9 @@ def build_report(
 
         # Check if ML strategy exists and note its curve shape
         ml_results = [
-            (n, r) for n, r in all_results if "ML" in n or "ml" in r["strategy_type"].lower()
+            (n, r)
+            for n, r in all_results
+            if "ML" in n or "ml" in r["strategy_type"].lower()
         ]
         if ml_results:
             ml_name, ml_r = ml_results[0]
@@ -316,10 +316,12 @@ def build_report(
         lines.append(f"![Sharpe Ratios]({chart_paths[2]})")
         lines.append("")
 
-        positive_sharpe = [(n, r) for n, r in all_results
-                          if r["metrics"].get("sharpe_ratio", 0) > 0]
-        negative_sharpe = [(n, r) for n, r in all_results
-                          if r["metrics"].get("sharpe_ratio", 0) <= 0]
+        positive_sharpe = [
+            (n, r) for n, r in all_results if r["metrics"].get("sharpe_ratio", 0) > 0
+        ]
+        negative_sharpe = [
+            (n, r) for n, r in all_results if r["metrics"].get("sharpe_ratio", 0) <= 0
+        ]
         lines.append(
             f"The Sharpe ratio measures risk-adjusted return "
             f"(excess return per unit of volatility). "
@@ -404,12 +406,8 @@ def build_report(
     )
     lines.append("")
 
-    lines.append(
-        "| Strategy | Sharpe | E[max SR] | Deflated | p-value | Significant |"
-    )
-    lines.append(
-        "| --- | ---: | ---: | ---: | ---: | :---: |"
-    )
+    lines.append("| Strategy | Sharpe | E[max SR] | Deflated | p-value | Significant |")
+    lines.append("| --- | ---: | ---: | ---: | ---: | :---: |")
 
     any_significant = False
     for name, result in all_results:
@@ -441,7 +439,9 @@ def build_report(
 
     lines.append("")
     lines.append("> **Legend:**")
-    lines.append(f"> - **E[max SR]** = expected best Sharpe from {n_trials} random trials")
+    lines.append(
+        f"> - **E[max SR]** = expected best Sharpe from {n_trials} random trials"
+    )
     lines.append("> - **Deflated** = Observed Sharpe - E[max SR]")
     lines.append(
         "> - **p-value** = P(true SR > E[max SR]) accounting for skew/kurtosis"
@@ -452,8 +452,10 @@ def build_report(
     # DSR interpretation
     if any_significant:
         sig_names = [
-            name for name, result in all_results
-            if result["n_observations"] >= 2 and deflated_sharpe_ratio(
+            name
+            for name, result in all_results
+            if result["n_observations"] >= 2
+            and deflated_sharpe_ratio(
                 observed_sr=result["metrics"].get("sharpe_ratio", 0.0),
                 n_trials=n_trials,
                 n_observations=result["n_observations"],
@@ -486,9 +488,7 @@ def build_report(
         lines.append(f"- **Strategy:** {result['strategy_type']}")
         lines.append(f"- **Sizing:** {result['sizing_method']}")
         lines.append(f"- **Optimization:** {result['optimization']}")
-        lines.append(
-            f"- **Risk Manager:** {'ON' if result['risk_enabled'] else 'OFF'}"
-        )
+        lines.append(f"- **Risk Manager:** {'ON' if result['risk_enabled'] else 'OFF'}")
         lines.append("")
 
         lines.append("| Metric | Value |")
