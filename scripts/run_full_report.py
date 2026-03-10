@@ -49,6 +49,7 @@ CONFIGS = [
     ("Vol + Risk Mgmt", "configs/backtest_phase2_vol.yaml"),
     ("Mean-Var Optimized", "configs/backtest_phase2_meanvar.yaml"),
     ("Risk Parity Optimized", "configs/backtest_phase2_riskparity.yaml"),
+    ("ML Strategy (XGBoost)", "configs/ml_backtest_config.yaml"),
 ]
 
 OUTPUT_DIR = Path("output")
@@ -58,17 +59,17 @@ def run_single_config(config_path: str) -> dict[str, Any]:
     """Run a single backtest and return all metrics."""
     config = load_config(config_path)
 
-    # Suppress "Loaded N symbols" print from data handler
+    # Suppress verbose output from data handler loading and ML training
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     try:
         data_handler = build_data_handler(config)
+        position_sizer = build_position_sizer(config)
+        risk_manager = build_risk_manager(config)
+        optimizer = build_optimizer(config)
+        strategy = build_strategy(config, optimizer, data_handler)
     finally:
         sys.stdout = old_stdout
-    position_sizer = build_position_sizer(config)
-    risk_manager = build_risk_manager(config)
-    optimizer = build_optimizer(config)
-    strategy = build_strategy(config, optimizer)
 
     portfolio = Portfolio(
         initial_capital=config.execution.initial_capital,
