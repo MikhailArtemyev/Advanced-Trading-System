@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install install-dev lint format type-check test test-cov clean help run
+.PHONY: install install-dev lint format type-check test test-cov clean help run run-ml run-baseline run-vol run-meanvar run-riskparity report
 
 # Default target
 help:
@@ -15,7 +15,13 @@ help:
 	@echo "  make test         Run tests"
 	@echo "  make test-cov     Run tests with coverage"
 	@echo "  make check        Run all checks (format, lint, type-check, test)"
-	@echo "  make run          Run backtest"
+	@echo "  make run          Run backtest (default config)"
+	@echo "  make run-baseline Run baseline (fixed sizing, no risk)"
+	@echo "  make run-vol      Run volatility sizing + risk management"
+	@echo "  make run-meanvar  Run mean-variance optimized portfolio"
+	@echo "  make run-ml       Run ML strategy backtest (XGBoost)"
+	@echo "  make run-riskparity Run risk parity optimized portfolio"
+	@echo "  make report       Run ALL configs and generate full comparison report"
 	@echo "  make clean        Remove cache files"
 	@echo ""
 
@@ -77,3 +83,24 @@ download-data:
 # Run backtest (downloads data first if needed)
 run: download-data
 	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_config.yaml
+
+# Run individual Phase 2 configs
+run-baseline: download-data
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_baseline.yaml
+
+run-vol: download-data
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_vol.yaml
+
+run-meanvar: download-data
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_meanvar.yaml
+
+run-riskparity: download-data
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_riskparity.yaml
+
+# Run ML strategy backtest
+run-ml: download-data
+	$(PYTHON) ./scripts/run_backtest.py --config configs/ml_backtest_config.yaml
+
+# Full report: run ALL configs, generate report + charts
+report: download-data
+	$(PYTHON) ./scripts/run_full_report.py
