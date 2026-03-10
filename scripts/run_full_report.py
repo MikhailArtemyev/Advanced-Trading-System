@@ -4,9 +4,10 @@
 Runs every config in configs/, computes performance metrics, applies
 Deflated Sharpe Ratio analysis, ranks strategies, and outputs:
   - Console summary
-  - Text report at output/strategy_report.txt
+  - Markdown report at output/strategy_report.md
   - Equity curve chart at output/equity_comparison.png
   - Drawdown chart at output/drawdown_comparison.png
+  - Sharpe bar chart at output/sharpe_comparison.png
 
 Usage:
     python scripts/run_full_report.py
@@ -38,7 +39,7 @@ from src.performance.metrics import PerformanceTracker
 from src.portfolio.portfolio import Portfolio
 from src.validation.deflated_sharpe import deflated_sharpe_ratio
 
-# All configs to compare, auto-discovered from configs/ directory
+# All configs to compare
 # Each entry: (display_name, config_path)
 CONFIGS = [
     ("Baseline (Default)", "configs/backtest_config.yaml"),
@@ -148,169 +149,275 @@ def run_single_config(config_path: str) -> dict[str, Any]:
     }
 
 
+def _fmt_pct(val: float, sign: bool = False) -> str:
+    """Format a percentage value."""
+    if sign:
+        return f"{val:+.2f}%"
+    return f"{val:.2f}%"
+
+
+def _fmt_dollar(val: float) -> str:
+    """Format a dollar value."""
+    return f"${val:,.0f}"
+
+
 def build_report(
     all_results: list[tuple[str, dict[str, Any]]],
+    chart_paths: list[str] | None = None,
 ) -> str:
-    """Build the full text report."""
+    """Build the full Markdown report."""
     lines: list[str] = []
-    w = 90
 
-    lines.append("=" * w)
-    lines.append("STRATEGY COMPARISON REPORT")
-    lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append("=" * w)
+    lines.append("# Strategy Comparison Report")
+    lines.append("")
+    lines.append(
+        f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*"
+    )
+    lines.append("")
 
     # --- Data summary ---
     first = all_results[0][1]
+    lines.append("## Data")
     lines.append("")
-    lines.append("DATA")
-    lines.append("-" * w)
-    lines.append(f"  Symbols:      {', '.join(first['symbols'])}")
-    lines.append(f"  Date Range:   {first['date_range']}")
-    lines.append(f"  Capital:      ${first['initial_capital']:,.0f}")
-    lines.append(f"  Configs Run:  {len(all_results)}")
+    lines.append(f"- **Symbols:** {', '.join(first['symbols'])}")
+    lines.append(f"- **Date Range:** {first['date_range']}")
+    lines.append(f"- **Initial Capital:** {_fmt_dollar(first['initial_capital'])}")
+    lines.append(f"- **Configs Run:** {len(all_results)}")
+    lines.append("")
 
     # --- Comparison table ---
-    lines.append("")
-    lines.append("=" * w)
-    lines.append("SIDE-BY-SIDE COMPARISON")
-    lines.append("=" * w)
+    lines.append("## Side-by-Side Comparison")
     lines.append("")
 
-    # Build table in groups of 5 to fit width
-    group_size = 5
-    for group_start in range(0, len(all_results), group_size):
-        group = all_results[group_start : group_start + group_size]
-        col_w = 18
-        label_w = 22
+    # Build a single Markdown table with all strategies
+    header = "| Metric |"
+    separator = "| --- |"
+    for name, _ in all_results:
+        header += f" {name} |"
+        separator += " ---: |"
+    lines.append(header)
+    lines.append(separator)
 
-        # Header
-        header = f"{'Metric':<{label_w}}"
-        for name, _ in group:
-            short = name[:col_w]
-            header += f"{short:>{col_w}}"
-        lines.append(header)
-        lines.append("-" * (label_w + col_w * len(group)))
+    table_rows: list[tuple[str, Any]] = [
+        ("Strategy", lambda r: r["strategy_type"]),
+        ("Sizing", lambda r: r["sizing_method"]),
+        ("Optimization", lambda r: r["optimization"]),
+        ("Risk Mgr", lambda r: "ON" if r["risk_enabled"] else "OFF"),
+        ("**Final Equity**", lambda r: _fmt_dollar(r["final_equity"])),
+        ("**Total Return**", lambda r: _fmt_pct(r["total_return_pct"], sign=True)),
+        (
+            "Ann. Return",
+            lambda r: _fmt_pct(r["metrics"].get("annualized_return_pct", 0), sign=True),
+        ),
+        ("Volatility", lambda r: _fmt_pct(r["metrics"].get("volatility_pct", 0))),
+        ("**Sharpe**", lambda r: f"{r['metrics'].get('sharpe_ratio', 0):.3f}"),
+        ("Sortino", lambda r: f"{r['metrics'].get('sortino_ratio', 0):.3f}"),
+        ("Calmar", lambda r: f"{r['metrics'].get('calmar_ratio', 0):.3f}"),
+        (
+            "**Max Drawdown**",
+            lambda r: _fmt_pct(r["metrics"].get("max_drawdown_pct", 0)),
+        ),
+        ("Trades", lambda r: str(r["total_trades"])),
+        ("Win Rate", lambda r: f"{r['metrics'].get('win_rate_pct', 0):.1f}%"),
+        ("Profit Factor", lambda r: f"{r['metrics'].get('profit_factor', 0):.2f}"),
+        ("Rejected", lambda r: str(r["rejected_orders"])),
+        ("Commission", lambda r: _fmt_dollar(r["total_commission"])),
+        ("Slippage", lambda r: _fmt_dollar(r["total_slippage"])),
+    ]
 
-        rows: list[tuple[str, Any]] = [
-            ("Strategy", lambda r, w=col_w: r["strategy_type"][:w]),
-            ("Sizing", lambda r, w=col_w: r["sizing_method"][:w]),
-            ("Optimization", lambda r, w=col_w: r["optimization"][:w]),
-            ("Risk Mgr", lambda r: "ON" if r["risk_enabled"] else "OFF"),
-            ("", None),
-            ("Final Equity", lambda r: f"${r['final_equity']:,.0f}"),
-            ("Total Return", lambda r: f"{r['total_return_pct']:+.2f}%"),
-            (
-                "Ann. Return",
-                lambda r: f"{r['metrics'].get('annualized_return_pct', 0):+.2f}%",
-            ),
-            ("Volatility", lambda r: f"{r['metrics'].get('volatility_pct', 0):.2f}%"),
-            ("Sharpe", lambda r: f"{r['metrics'].get('sharpe_ratio', 0):.3f}"),
-            ("Sortino", lambda r: f"{r['metrics'].get('sortino_ratio', 0):.3f}"),
-            ("Calmar", lambda r: f"{r['metrics'].get('calmar_ratio', 0):.3f}"),
-            (
-                "Max Drawdown",
-                lambda r: f"{r['metrics'].get('max_drawdown_pct', 0):.2f}%",
-            ),
-            ("", None),
-            ("Trades", lambda r: str(r["total_trades"])),
-            ("Win Rate", lambda r: f"{r['metrics'].get('win_rate_pct', 0):.1f}%"),
-            ("Profit Factor", lambda r: f"{r['metrics'].get('profit_factor', 0):.2f}"),
-            ("Rejected", lambda r: str(r["rejected_orders"])),
-            ("Commission", lambda r: f"${r['total_commission']:,.0f}"),
-            ("Slippage", lambda r: f"${r['total_slippage']:,.0f}"),
+    for label, fn in table_rows:
+        row = f"| {label} |"
+        for _, result in all_results:
+            row += f" {fn(result)} |"
+        lines.append(row)
+
+    lines.append("")
+
+    # --- Equity curves chart ---
+    if chart_paths and len(chart_paths) >= 1:
+        lines.append("## Equity Curves")
+        lines.append("")
+        lines.append(f"![Equity Curves]({chart_paths[0]})")
+        lines.append("")
+        # Find best and worst performers
+        sorted_by_return = sorted(
+            all_results, key=lambda x: x[1]["total_return_pct"], reverse=True
+        )
+        best_name, best_r = sorted_by_return[0]
+        worst_name, worst_r = sorted_by_return[-1]
+        lines.append(
+            f"The chart above shows portfolio value over time for all "
+            f"{len(all_results)} strategies. "
+            f"**{best_name}** delivered the highest total return "
+            f"({best_r['total_return_pct']:+.1f}%), "
+            f"while **{worst_name}** had the lowest "
+            f"({worst_r['total_return_pct']:+.1f}%). "
+        )
+
+        # Check if ML strategy exists and note its curve shape
+        ml_results = [
+            (n, r) for n, r in all_results if "ML" in n or "ml" in r["strategy_type"].lower()
         ]
+        if ml_results:
+            ml_name, ml_r = ml_results[0]
+            ml_vol = ml_r["metrics"].get("volatility_pct", 0)
+            lines.append(
+                f"**{ml_name}** shows a notably smoother equity curve "
+                f"(volatility {ml_vol:.1f}%) compared to rule-based strategies, "
+                f"though this reflects in-sample performance and should not be "
+                f"taken as indicative of live results."
+            )
+        lines.append("")
 
-        for label, fn in rows:
-            if label == "":
-                lines.append("")
-                continue
-            line = f"{label:<{label_w}}"
-            for _, result in group:
-                val = fn(result)
-                line += f"{val:>{col_w}}"
-            lines.append(line)
+    # --- Drawdown chart ---
+    if chart_paths and len(chart_paths) >= 2:
+        lines.append("## Drawdowns")
+        lines.append("")
+        lines.append(f"![Drawdowns]({chart_paths[1]})")
+        lines.append("")
 
+        sorted_by_dd = sorted(
+            all_results,
+            key=lambda x: x[1]["metrics"].get("max_drawdown_pct", -100),
+            reverse=True,
+        )
+        best_dd_name, best_dd_r = sorted_by_dd[0]
+        worst_dd_name, worst_dd_r = sorted_by_dd[-1]
+        best_dd = best_dd_r["metrics"].get("max_drawdown_pct", 0)
+        worst_dd = worst_dd_r["metrics"].get("max_drawdown_pct", 0)
+
+        lines.append(
+            f"Drawdown measures peak-to-trough decline as a percentage of peak equity. "
+            f"**{best_dd_name}** had the shallowest drawdown ({best_dd:.1f}%), "
+            f"while **{worst_dd_name}** experienced the deepest ({worst_dd:.1f}%). "
+        )
+
+        # Note risk management effect
+        risk_on = [(n, r) for n, r in all_results if r["risk_enabled"]]
+        risk_off = [(n, r) for n, r in all_results if not r["risk_enabled"]]
+        if risk_on and risk_off:
+            avg_dd_on = sum(
+                r["metrics"].get("max_drawdown_pct", 0) for _, r in risk_on
+            ) / len(risk_on)
+            avg_dd_off = sum(
+                r["metrics"].get("max_drawdown_pct", 0) for _, r in risk_off
+            ) / len(risk_off)
+            if avg_dd_on > avg_dd_off:  # less negative = better
+                lines.append(
+                    f"Risk management improves average max drawdown "
+                    f"({avg_dd_on:.1f}% vs {avg_dd_off:.1f}% without)."
+                )
+        lines.append("")
+
+    # --- Sharpe chart ---
+    if chart_paths and len(chart_paths) >= 3:
+        lines.append("## Sharpe Ratios")
+        lines.append("")
+        lines.append(f"![Sharpe Ratios]({chart_paths[2]})")
+        lines.append("")
+
+        positive_sharpe = [(n, r) for n, r in all_results
+                          if r["metrics"].get("sharpe_ratio", 0) > 0]
+        negative_sharpe = [(n, r) for n, r in all_results
+                          if r["metrics"].get("sharpe_ratio", 0) <= 0]
+        lines.append(
+            f"The Sharpe ratio measures risk-adjusted return "
+            f"(excess return per unit of volatility). "
+            f"{len(positive_sharpe)} of {len(all_results)} strategies "
+            f"achieved positive Sharpe ratios"
+        )
+        if negative_sharpe:
+            neg_names = ", ".join(n for n, _ in negative_sharpe)
+            lines.append(
+                f"while {len(negative_sharpe)} had negative ratios ({neg_names}), "
+                f"meaning their returns did not compensate for risk taken."
+            )
+        else:
+            lines.append(".")
         lines.append("")
 
     # --- Rankings ---
-    lines.append("=" * w)
-    lines.append("RANKINGS")
-    lines.append("=" * w)
+    lines.append("## Rankings")
     lines.append("")
 
     rankings = [
         (
-            "By Sharpe Ratio (risk-adjusted return)",
+            "By Sharpe Ratio",
+            "risk-adjusted return",
             lambda r: r["metrics"].get("sharpe_ratio", 0),
             True,
+            ".3f",
         ),
         (
             "By Total Return",
+            "absolute performance",
             lambda r: r["total_return_pct"],
             True,
+            ".2f",
         ),
         (
-            "By Max Drawdown (least negative = best)",
+            "By Max Drawdown",
+            "least negative is best",
             lambda r: r["metrics"].get("max_drawdown_pct", -100),
             True,
+            ".2f",
         ),
         (
-            "By Calmar Ratio (return / drawdown)",
+            "By Calmar Ratio",
+            "return / drawdown",
             lambda r: r["metrics"].get("calmar_ratio", 0),
             True,
+            ".3f",
         ),
         (
             "By Win Rate",
+            "percentage of profitable trades",
             lambda r: r["metrics"].get("win_rate_pct", 0),
             True,
+            ".1f",
         ),
     ]
 
-    for title, key_fn, reverse in rankings:
+    for title, desc, key_fn, reverse, fmt in rankings:
         sorted_results = sorted(
-            all_results, key=lambda x: key_fn(x[1]), reverse=reverse
+            all_results, key=lambda x, kf=key_fn: kf(x[1]), reverse=reverse
         )
-        lines.append(f"  {title}:")
+        lines.append(f"### {title}")
+        lines.append(f"*{desc}*")
+        lines.append("")
+        lines.append("| Rank | Strategy | Value |")
+        lines.append("| ---: | --- | ---: |")
         for rank, (name, result) in enumerate(sorted_results, 1):
             val = key_fn(result)
-            if isinstance(val, float):
-                lines.append(f"    {rank}. {name:<35} {val:>10.3f}")
-            else:
-                lines.append(f"    {rank}. {name:<35} {val:>10}")
+            lines.append(f"| {rank} | {name} | {val:{fmt}} |")
         lines.append("")
 
     # --- Deflated Sharpe Ratio analysis ---
-    lines.append("=" * w)
-    lines.append("DEFLATED SHARPE RATIO ANALYSIS")
-    lines.append("=" * w)
+    lines.append("## Deflated Sharpe Ratio Analysis")
     lines.append("")
-    lines.append(
-        "  Tests whether each strategy's Sharpe ratio is statistically significant"
-    )
-    lines.append(
-        f"  after adjusting for multiple testing ({len(all_results)} configurations tested)."
-    )
-    lines.append(
-        "  A strategy is significant if its Sharpe survives the selection bias"
-    )
-    lines.append("  of picking the best from N trials.")
-    lines.append("")
-
     n_trials = len(all_results)
-    dsr_header = (
-        f"  {'Strategy':<35} {'Sharpe':>8} {'E[maxSR]':>10} "
-        f"{'Deflated':>10} {'p-value':>9} {'Sig?':>6}"
+    lines.append(
+        f"Tests whether each strategy's Sharpe ratio is statistically significant "
+        f"after adjusting for multiple testing ({n_trials} configurations tested). "
+        f"A strategy is significant if its Sharpe survives the selection bias "
+        f"of picking the best from N trials."
     )
-    lines.append(dsr_header)
-    lines.append("  " + "-" * (len(dsr_header) - 2))
+    lines.append("")
 
+    lines.append(
+        "| Strategy | Sharpe | E[max SR] | Deflated | p-value | Significant |"
+    )
+    lines.append(
+        "| --- | ---: | ---: | ---: | ---: | :---: |"
+    )
+
+    any_significant = False
     for name, result in all_results:
         observed_sr = result["metrics"].get("sharpe_ratio", 0.0)
         n_obs = result["n_observations"]
 
         if n_obs < 2:
-            lines.append(f"  {name:<35} {'N/A':>8} (insufficient data)")
+            lines.append(f"| {name} | N/A | — | — | — | — |")
             continue
 
         dsr_result = deflated_sharpe_ratio(
@@ -321,62 +428,101 @@ def build_report(
             kurtosis=result["returns_kurt"],
         )
 
-        sig_marker = "YES" if dsr_result.is_significant else "no"
+        sig = "**YES**" if dsr_result.is_significant else "no"
+        if dsr_result.is_significant:
+            any_significant = True
         lines.append(
-            f"  {name:<35} {observed_sr:>8.3f} "
-            f"{dsr_result.expected_max_sharpe:>10.3f} "
-            f"{dsr_result.deflated_sharpe:>10.3f} "
-            f"{dsr_result.p_value:>9.4f} "
-            f"{sig_marker:>6}"
+            f"| {name} | {observed_sr:.3f} "
+            f"| {dsr_result.expected_max_sharpe:.3f} "
+            f"| {dsr_result.deflated_sharpe:.3f} "
+            f"| {dsr_result.p_value:.4f} "
+            f"| {sig} |"
         )
 
     lines.append("")
-    lines.append(f"  E[max SR] = expected best Sharpe from {n_trials} random trials")
-    lines.append("  Deflated  = Observed Sharpe - E[max SR]")
-    lines.append("  p-value   = P(true SR > E[max SR]) accounting for skew/kurtosis")
-    lines.append("  Sig?      = significant at 5% level (p > 0.95)")
+    lines.append("> **Legend:**")
+    lines.append(f"> - **E[max SR]** = expected best Sharpe from {n_trials} random trials")
+    lines.append("> - **Deflated** = Observed Sharpe - E[max SR]")
+    lines.append(
+        "> - **p-value** = P(true SR > E[max SR]) accounting for skew/kurtosis"
+    )
+    lines.append("> - **Significant** = p-value > 0.95 (5% significance level)")
+    lines.append("")
+
+    # DSR interpretation
+    if any_significant:
+        sig_names = [
+            name for name, result in all_results
+            if result["n_observations"] >= 2 and deflated_sharpe_ratio(
+                observed_sr=result["metrics"].get("sharpe_ratio", 0.0),
+                n_trials=n_trials,
+                n_observations=result["n_observations"],
+                skewness=result["returns_skew"],
+                kurtosis=result["returns_kurt"],
+            ).is_significant
+        ]
+        lines.append(
+            f"**{', '.join(sig_names)}** survived the multiple testing adjustment. "
+            f"However, strategies trained and tested on the same data (in-sample) "
+            f"will show inflated significance. Use CPCV for true out-of-sample evaluation."
+        )
+    else:
+        lines.append(
+            "**No strategy achieved statistical significance** after adjusting for "
+            "multiple testing. The observed Sharpe ratios are consistent with random "
+            "variation from testing multiple configurations."
+        )
+    lines.append("")
 
     # --- Per-strategy detail ---
+    lines.append("## Per-Strategy Detail")
     lines.append("")
-    lines.append("=" * w)
-    lines.append("PER-STRATEGY DETAIL")
-    lines.append("=" * w)
 
     for name, result in all_results:
+        m = result["metrics"]
+        lines.append(f"### {name}")
         lines.append("")
-        lines.append(f"  {name}")
-        lines.append(f"  {'=' * len(name)}")
-        lines.append(f"  Config:         {result['config_path']}")
-        lines.append(f"  Strategy:       {result['strategy_type']}")
-        lines.append(f"  Sizing:         {result['sizing_method']}")
-        lines.append(f"  Optimization:   {result['optimization']}")
-        lines.append(f"  Risk Manager:   {'ON' if result['risk_enabled'] else 'OFF'}")
+        lines.append(f"- **Config:** `{result['config_path']}`")
+        lines.append(f"- **Strategy:** {result['strategy_type']}")
+        lines.append(f"- **Sizing:** {result['sizing_method']}")
+        lines.append(f"- **Optimization:** {result['optimization']}")
+        lines.append(
+            f"- **Risk Manager:** {'ON' if result['risk_enabled'] else 'OFF'}"
+        )
         lines.append("")
 
-        m = result["metrics"]
+        lines.append("| Metric | Value |")
+        lines.append("| --- | ---: |")
         lines.append(
-            f"  Capital:        ${result['initial_capital']:,.0f} -> ${result['final_equity']:,.0f}"
+            f"| Capital | {_fmt_dollar(result['initial_capital'])} "
+            f"-> {_fmt_dollar(result['final_equity'])} |"
         )
-        lines.append(f"  Total Return:   {result['total_return_pct']:+.2f}%")
-        lines.append(f"  Ann. Return:    {m.get('annualized_return_pct', 0):+.2f}%")
-        lines.append(f"  Volatility:     {m.get('volatility_pct', 0):.2f}%")
-        lines.append(f"  Sharpe:         {m.get('sharpe_ratio', 0):.3f}")
-        lines.append(f"  Sortino:        {m.get('sortino_ratio', 0):.3f}")
-        lines.append(f"  Calmar:         {m.get('calmar_ratio', 0):.3f}")
-        lines.append(f"  Max Drawdown:   {m.get('max_drawdown_pct', 0):.2f}%")
+        lines.append(
+            f"| Total Return | {_fmt_pct(result['total_return_pct'], sign=True)} |"
+        )
+        lines.append(
+            f"| Ann. Return | "
+            f"{_fmt_pct(m.get('annualized_return_pct', 0), sign=True)} |"
+        )
+        lines.append(f"| Volatility | {_fmt_pct(m.get('volatility_pct', 0))} |")
+        lines.append(f"| Sharpe | {m.get('sharpe_ratio', 0):.3f} |")
+        lines.append(f"| Sortino | {m.get('sortino_ratio', 0):.3f} |")
+        lines.append(f"| Calmar | {m.get('calmar_ratio', 0):.3f} |")
+        lines.append(f"| Max Drawdown | {_fmt_pct(m.get('max_drawdown_pct', 0))} |")
+        lines.append(f"| Trades | {result['total_trades']} |")
+        lines.append(f"| Win Rate | {m.get('win_rate_pct', 0):.1f}% |")
+        lines.append(f"| Profit Factor | {m.get('profit_factor', 0):.2f} |")
+        lines.append(f"| Rejected | {result['rejected_orders']} |")
+        lines.append(f"| Commission | ${result['total_commission']:,.2f} |")
+        lines.append(f"| Slippage | ${result['total_slippage']:,.2f} |")
         lines.append("")
-        lines.append(f"  Trades:         {result['total_trades']}")
-        lines.append(f"  Win Rate:       {m.get('win_rate_pct', 0):.1f}%")
-        lines.append(f"  Profit Factor:  {m.get('profit_factor', 0):.2f}")
-        lines.append(f"  Rejected:       {result['rejected_orders']}")
-        lines.append(f"  Commission:     ${result['total_commission']:,.2f}")
-        lines.append(f"  Slippage:       ${result['total_slippage']:,.2f}")
 
     # --- Footer ---
-    lines.append("")
-    lines.append("=" * w)
-    lines.append("END OF REPORT")
-    lines.append("=" * w)
+    lines.append("---")
+    lines.append(
+        f"*Report generated by `make report` on "
+        f"{datetime.now().strftime('%Y-%m-%d')}.*"
+    )
 
     return "\n".join(lines)
 
@@ -494,23 +640,21 @@ def main() -> None:
         print("No successful runs.")
         return
 
+    # Generate plots first so we can embed them in the report
+    chart_paths: list[str] = []
+    if not args.no_plots:
+        chart_paths = generate_plots(all_results)
+        for p in chart_paths:
+            print(f"Chart saved to:  {p}")
+
     # Build and save report
-    report = build_report(all_results)
+    report = build_report(all_results, chart_paths)
 
     OUTPUT_DIR.mkdir(exist_ok=True)
-    report_path = OUTPUT_DIR / "strategy_report.txt"
+    report_path = OUTPUT_DIR / "strategy_report.md"
     report_path.write_text(report)
 
-    # Print report to console
-    print(report)
-    print()
     print(f"Report saved to: {report_path}")
-
-    # Generate plots
-    if not args.no_plots:
-        saved_plots = generate_plots(all_results)
-        for p in saved_plots:
-            print(f"Chart saved to:  {p}")
 
 
 if __name__ == "__main__":
