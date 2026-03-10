@@ -41,7 +41,7 @@ def run_single_config(config_path: str) -> dict:
     position_sizer = build_position_sizer(config)
     risk_manager = build_risk_manager(config)
     optimizer = build_optimizer(config)
-    strategy = build_strategy(config, optimizer)
+    strategy = build_strategy(config, optimizer, data_handler)
 
     portfolio = Portfolio(
         initial_capital=config.execution.initial_capital,
