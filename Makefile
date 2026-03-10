@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install install-dev lint format type-check test test-cov clean help run run-ml run-baseline run-vol run-meanvar run-riskparity run-compare report
+.PHONY: install install-dev lint format type-check test test-cov clean help run run-ml run-baseline run-vol run-meanvar run-riskparity report
 
 # Default target
 help:
@@ -16,7 +16,6 @@ help:
 	@echo "  make test-cov     Run tests with coverage"
 	@echo "  make check        Run all checks (format, lint, type-check, test)"
 	@echo "  make run          Run backtest (default config)"
-	@echo "  make run-compare  Compare all Phase 2 strategies side-by-side"
 	@echo "  make run-baseline Run baseline (fixed sizing, no risk)"
 	@echo "  make run-vol      Run volatility sizing + risk management"
 	@echo "  make run-meanvar  Run mean-variance optimized portfolio"
@@ -101,10 +100,6 @@ run-riskparity: download-data
 # Run ML strategy backtest
 run-ml: download-data
 	$(PYTHON) ./scripts/run_backtest.py --config configs/ml_backtest_config.yaml
-
-# Compare all Phase 2 configs side-by-side
-run-compare: download-data
-	$(PYTHON) ./scripts/run_comparison.py
 
 # Full report: run ALL configs, generate report + charts
 report: download-data

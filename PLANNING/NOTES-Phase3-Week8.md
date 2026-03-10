@@ -280,4 +280,4 @@ Components built:
 - `src/regime/` — HMM regime detection
 - `src/tracking/` — MLflow experiment tracking
 - Extended config system (5 new sections, fully backwards compatible)
-- `make run-ml`, `make report`, `make run-compare` + individual targets
+- `make run-ml`, `make report` + individual targets
