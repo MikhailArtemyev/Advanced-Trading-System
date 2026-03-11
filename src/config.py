@@ -137,6 +137,74 @@ class TrackingConfig(BaseModel):
     experiment_name: str = "trading_system"
 
 
+class LiveDataConfig(BaseModel):
+    """Configuration for live data feeds."""
+
+    feed_type: str = "websocket"
+    url: str = ""
+    symbols: list[str] = Field(default_factory=list)
+    bar_interval_seconds: int = Field(default=60, gt=0)
+    max_history: int = Field(default=5000, gt=0)
+    reconnect_attempts: int = Field(default=10, ge=0)
+    reconnect_delay: float = Field(default=1.0, gt=0)
+
+    @field_validator("feed_type")
+    @classmethod
+    def validate_feed_type(cls, v: str) -> str:
+        allowed = {"websocket", "polling"}
+        if v not in allowed:
+            msg = f"feed_type must be one of {allowed}, got '{v}'"
+            raise ValueError(msg)
+        return v
+
+
+class BrokerConfig(BaseModel):
+    """Configuration for broker connection."""
+
+    broker_type: str = "paper"
+    api_key: str = ""
+    api_secret: str = ""
+    base_url: str = ""
+    paper_mode: bool = True
+    fill_delay_ms: int = Field(default=100, ge=0)
+    slippage_model: str = "fixed"
+
+    @field_validator("broker_type")
+    @classmethod
+    def validate_broker_type(cls, v: str) -> str:
+        allowed = {"paper", "alpaca", "ibkr"}
+        if v not in allowed:
+            msg = f"broker_type must be one of {allowed}, got '{v}'"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("slippage_model")
+    @classmethod
+    def validate_slippage_model(cls, v: str) -> str:
+        allowed = {"fixed", "proportional", "volume"}
+        if v not in allowed:
+            msg = f"slippage_model must be one of {allowed}, got '{v}'"
+            raise ValueError(msg)
+        return v
+
+
+class PersistenceConfig(BaseModel):
+    """Configuration for state persistence."""
+
+    enabled: bool = True
+    state_dir: str = "state/"
+    save_interval_seconds: int = Field(default=300, gt=0)
+    max_snapshots: int = Field(default=10, ge=1)
+
+
+class LiveConfig(BaseModel):
+    """Top-level live/paper trading configuration."""
+
+    data: LiveDataConfig = Field(default_factory=LiveDataConfig)
+    broker: BrokerConfig = Field(default_factory=BrokerConfig)
+    persistence: PersistenceConfig = Field(default_factory=PersistenceConfig)
+
+
 class BacktestConfig(BaseModel):
     """Main configuration container for backtesting."""
 
@@ -151,6 +219,7 @@ class BacktestConfig(BaseModel):
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
     regime: RegimeConfig = Field(default_factory=RegimeConfig)
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
+    live: LiveConfig = Field(default_factory=LiveConfig)
 
 
 def load_config(path: str) -> BacktestConfig:
