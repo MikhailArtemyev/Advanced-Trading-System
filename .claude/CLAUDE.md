@@ -14,7 +14,9 @@ pytest tests/test_cpcv.py::TestPurging::test_purge_symmetric -v  # Single test
 make format             # Auto-format with black
 make lint-fix           # Auto-fix lint issues with ruff
 make type-check         # mypy src/ --ignore-missing-imports
-make report             # Run all 8 configs and generate comparison report + charts
+make report             # Run all configs and generate comparison report + charts
+make paper              # Run paper trading session (synthetic data)
+make run-config CONFIG=path  # Run with a custom config
 ```
 
 ## Architecture
@@ -44,16 +46,21 @@ MarketEvent → Strategy.calculate_signals() → SignalEvent
 - **`src/validation/`** — `CPCVValidator` (combinatorial purged cross-validation) and `deflated_sharpe_ratio()` (multiple testing adjustment)
 - **`src/regime/`** — `RegimeDetector` using Gaussian HMM (hmmlearn). `fit_predict(ohlcv)` returns `RegimeResult` with regime labels, transition matrix, means/vols. Uses `covariance_type="diag"` (not "full" — numerically fragile with 2 features)
 - **`src/tracking/`** — `ExperimentTracker` wrapping MLflow. Context manager API, nested dict flattening, bool filtering
-- **`src/config.py`** — Pydantic models for YAML config. `load_config(path)` returns typed config object. Sections: data, execution, strategy, sizing, risk, optimization, features, ml, validation, regime, tracking
+- **`src/config.py`** — Pydantic models for YAML config. `load_config(path)` returns typed config object. Sections: data, execution, strategy, sizing, risk, optimization, features, ml, validation, regime, tracking, live
+- **`src/live/`** — `LiveDataFeed` ABC with `WebSocketDataFeed` (async tick streaming, auto-reconnect). `BarAggregator` converts ticks → OHLCV bars. `LiveDataHandler` wraps BarAggregator behind `DataHandler` ABC so strategies work unchanged
+- **`src/broker/`** — `BrokerAdapter` ABC with `PaperBroker` (simulated execution with slippage/commission). `OrderManager` state machine: PENDING → SUBMITTED → FILLED/CANCELLED/REJECTED. Bridges OrderEvent ↔ BrokerOrder, BrokerFill → FillEvent
+- **`src/engine/`** — `PaperTradingEngine` async event loop (two tasks: bar polling + event processing). Reuses Strategy, Portfolio, RiskManager from backtest. `StateManager` for JSON snapshot persistence and crash recovery
+- **`src/monitoring/`** — `HealthMonitor` tracks bar freshness, event latency, order fill rates, feed status. `HealthStatus`: HEALTHY/DEGRADED/UNHEALTHY. Alert callbacks fire on non-healthy state
 
 ### Configuration
 
-All backtest behavior is driven by YAML files in `configs/`. The config has sections: `data`, `execution`, `strategy`, `sizing`, `risk`, `optimization`, `features`, `ml`, `validation`, `regime`, `tracking`. Phase 2 sections have no defaults that require specification; Phase 3 sections all have defaults so older configs load unchanged.
+All backtest behavior is driven by YAML files in `configs/`. The config has sections: `data`, `execution`, `strategy`, `sizing`, `risk`, `optimization`, `features`, `ml`, `validation`, `regime`, `tracking`, `live`. Phase 2 sections have no defaults that require specification; Phase 3-4 sections all have defaults so older configs load unchanged.
 
 ### Scripts
 
 - **`scripts/run_backtest.py`** — Main entry point. Has builder functions (`build_data_handler`, `build_strategy`, `build_feature_pipeline`, `build_ml_model`, etc.) that wire config to components. ML training reads from `data_handler.data[symbol]` (not `get_latest_bars`)
 - **`scripts/run_full_report.py`** — Runs all configs, generates `output/strategy_report.txt` + PNG charts
+- **`scripts/run_paper_trading.py`** — Paper trading session. Wires LiveDataHandler + PaperBroker + PaperTradingEngine with health monitoring, periodic state snapshots, and reconciliation on shutdown. Run with `make paper`
 
 ## Code Quality
 
@@ -65,6 +72,6 @@ All backtest behavior is driven by YAML files in `configs/`. The config has sect
 
 ## Project Progress
 
-Phased development with detailed plans in `PLANNING/Phase-{1,2,3}-Plan.md` and weekly notes in `PLANNING/NOTES-Phase3-Week{N}.md`.
+Phased development with detailed plans in `PLANNING/Phase-{1,2,3,4}-Plan.md` and weekly notes in `PLANNING/NOTES-Phase{N}-Week{S}.md`.
 
-Phase 3 (ML & Advanced Analytics) is COMPLETE — 997 tests, all checks green. Key packages added: features, ml, validation, regime, tracking.
+Phase 4 (Paper Trading) is COMPLETE — 1349 tests, all checks green. Key packages added: live, broker, engine, monitoring.
