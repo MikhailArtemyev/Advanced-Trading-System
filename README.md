@@ -1,10 +1,10 @@
 # Trading System MVP
 
-Event-driven backtesting engine for systematic trading strategies.
+Event-driven backtesting engine and paper trading system for systematic trading strategies.
 
 ## How It Works
 
-This is a backtester — it replays historical stock data and simulates what would happen if you followed a trading strategy. You give it price data and a strategy, it tells you how much money you would have made (or lost).
+This is a backtester and paper trading engine — it can replay historical stock data to simulate strategy performance, or run strategies in real-time against live data with a simulated broker. You give it price data and a strategy, it tells you how much money you would have made (or lost).
 
 ### The Event Loop
 
@@ -39,7 +39,15 @@ Events go into a queue and get processed one by one before moving to the next da
 - **CorrelationTracker** — tracks rolling pairwise correlations between assets for portfolio monitoring.
 - **WalkForwardRunner** — walk-forward analysis with rolling train/test windows and walk-forward efficiency (WFE) calculation.
 - **PerformanceTracker** — calculates metrics (Sharpe, Sortino, Calmar, max drawdown, win rate, turnover, etc.) and generates reports.
-- **BacktestEngine** — wires everything together and runs the loop.
+- **BacktestEngine** — wires everything together and runs the historical backtest loop.
+- **LiveDataFeed** — WebSocket-based tick streaming with automatic reconnection and exponential backoff.
+- **BarAggregator** — converts raw ticks into OHLCV bars on configurable intervals (1s, 1m, 5m, etc.) with gap detection.
+- **LiveDataHandler** — bridges BarAggregator to the DataHandler ABC so strategies work unchanged in live mode.
+- **BrokerAdapter** — abstract broker interface (paper, Alpaca, IBKR). PaperBroker simulates execution with slippage and commission.
+- **OrderManager** — order lifecycle state machine (PENDING → SUBMITTED → FILLED/CANCELLED/REJECTED) with audit trail.
+- **PaperTradingEngine** — async event loop for paper trading. Reuses Strategy, Portfolio, RiskManager from backtesting.
+- **StateManager** — JSON snapshot persistence for crash recovery. Auto-prunes old snapshots.
+- **HealthMonitor** — tracks bar freshness, event latency, fill rates. HEALTHY/DEGRADED/UNHEALTHY status with alert callbacks.
 
 ## Quick Start
 
@@ -84,10 +92,14 @@ trading_system/
 │   ├── ml/                 # ML models (XGBoost, LightGBM) and MLStrategy
 │   ├── validation/         # CPCV cross-validation and Deflated Sharpe Ratio
 │   ├── regime/             # HMM regime detection (bull/bear/sideways)
-│   └── tracking/           # MLflow experiment tracking
-├── tests/                  # 997 unit and integration tests
-├── configs/                # Configuration files (9 configs)
-├── scripts/                # Utility scripts (run_backtest, download_data, reports)
+│   ├── tracking/           # MLflow experiment tracking
+│   ├── live/               # Live data feed, bar aggregation, LiveDataHandler
+│   ├── broker/             # BrokerAdapter ABC, PaperBroker, OrderManager
+│   ├── engine/             # PaperTradingEngine, StateManager
+│   └── monitoring/         # HealthMonitor, HealthReport, HealthStatus
+├── tests/                  # 1349 unit, integration, and stability tests
+├── configs/                # Configuration files (10 configs)
+├── scripts/                # Utility scripts (backtest, paper trading, reports)
 ├── data/                   # Market data (not in git)
 ├── notebooks/              # Jupyter notebooks
 └── output/                 # Backtest results and reports
@@ -197,6 +209,24 @@ optimization:
     max_weight: 0.40
 ```
 
+**live** — Paper/live trading settings (optional, has defaults):
+```yaml
+live:
+  data:
+    feed_type: "websocket"       # websocket or polling
+    bar_interval_seconds: 60     # bar duration in seconds
+    max_history: 5000            # max bars to retain per symbol
+    reconnect_attempts: 10
+  broker:
+    broker_type: "paper"         # paper, alpaca, or ibkr
+    fill_delay_ms: 100           # simulated fill delay
+  persistence:
+    enabled: true
+    state_dir: "state/"          # snapshot directory
+    save_interval_seconds: 300   # auto-save every 5 minutes
+    max_snapshots: 10            # keep last 10 snapshots
+```
+
 ### Example Configs
 
 | Config | Description |
@@ -209,6 +239,7 @@ optimization:
 | `kelly_sizing.yaml` | Kelly criterion position sizing |
 | `conservative_risk.yaml` | Tight risk limits example |
 | `ml_backtest_config.yaml` | ML strategy (XGBoost classification) |
+| `paper_trading_config.yaml` | Paper trading with SMA crossover |
 
 ## Development
 
@@ -243,6 +274,8 @@ make run-vol          # Volatility sizing
 make run-meanvar      # Mean-variance optimization
 make run-riskparity   # Risk parity optimization
 make report           # Run ALL configs, generate comparison report + charts
+make paper            # Run paper trading session (synthetic data)
+make run-config CONFIG=path  # Run with a custom config
 ```
 
 ## Adding New Strategies
@@ -259,12 +292,20 @@ make report           # Run ALL configs, generate comparison report + charts
 4. Add to `build_ml_model()` in `scripts/run_backtest.py`
 5. Add model name to `MLConfig.validate_model()` in `src/config.py`
 
+## Adding New Brokers
+
+1. Create new file in `src/broker/`
+2. Inherit from `BrokerAdapter` ABC
+3. Implement `connect()`, `disconnect()`, `submit_order()`, `cancel_order()`, `get_order_status()`, `get_positions()`, `get_account_info()`
+4. Add broker type to `BrokerConfig.validate_broker_type()` in `src/config.py`
+
 ## Project Status
 
-Phase 3 COMPLETE — 997 tests, all checks green.
+Phase 4 COMPLETE — 1349 tests, all checks green.
 
 | Phase | Focus | Tests |
 |-------|-------|-------|
 | 1 | Core backtesting engine, events, portfolio | ~300 |
 | 2 | Risk management, position sizing, optimization, walk-forward | ~600 |
 | 3 | Feature engineering, ML models, CPCV, DSR, regime detection | ~997 |
+| 4 | Paper trading, live data, broker adapter, monitoring | ~1349 |
