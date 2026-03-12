@@ -30,11 +30,11 @@ from src.engine.paper_engine import PaperTradingEngine
 from src.engine.state_manager import StateManager
 from src.live.bar_aggregator import BarAggregator, Tick
 from src.live.data_handler import LiveDataHandler
-from src.monitoring.health import HealthMonitor, HealthStatus
+from src.monitoring.health import HealthMonitor
 from src.portfolio.portfolio import Portfolio
 from src.risk.position_sizer import FixedFractionSizer
 from src.risk.risk_manager import RiskLimits, RiskManager
-from src.strategy.sma_strategy import SMACrossoverStrategy
+from src.strategy.sma_crossover import SMACrossoverStrategy
 
 logging.basicConfig(
     level=logging.INFO,
@@ -161,7 +161,9 @@ def generate_synthetic_ticks(
             trend = base * 0.03 * math.sin(2 * math.pi * t / (5 * 60))
             noise = base * 0.001 * math.sin(t * 17.3 + hash(symbol) % 100)
             price = base + trend + noise
-            ticks.append(Tick(symbol=symbol, price=price, timestamp=timestamp, volume=100))
+            ticks.append(
+                Tick(symbol=symbol, price=price, timestamp=timestamp, volume=100)
+            )
 
     return ticks
 
@@ -191,7 +193,9 @@ async def run_paper_trading(config: BacktestConfig) -> None:
     # Try to restore from last snapshot
     snapshot = state_manager.load_latest_snapshot()
     if snapshot is not None:
-        logger.info("Restored state from snapshot: %s", snapshot.get("_snapshot_timestamp"))
+        logger.info(
+            "Restored state from snapshot: %s", snapshot.get("_snapshot_timestamp")
+        )
     else:
         logger.info("No previous state found — starting fresh")
 
