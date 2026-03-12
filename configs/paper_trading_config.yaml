@@ -1,0 +1,48 @@
+# Paper Trading Configuration
+# Uses SMA crossover strategy with paper broker
+
+data:
+  symbols: ["AAPL", "MSFT", "GOOGL"]
+  data_source: "yfinance"
+  start_date: "2024-01-01"
+  end_date: "2024-12-31"
+
+execution:
+  initial_capital: 100000.0
+  commission_pct: 0.001
+  slippage_pct: 0.0005
+
+strategy:
+  name: "sma_crossover"
+  parameters:
+    fast_period: 10
+    slow_period: 30
+
+sizing:
+  method: "fixed_fraction"
+  parameters:
+    fraction: 0.05
+
+risk:
+  enabled: true
+  max_position_pct: 0.10
+  max_portfolio_exposure_pct: 0.80
+  max_daily_loss_pct: 0.02
+  max_drawdown_pct: 0.10
+  max_open_positions: 10
+  max_orders_per_day: 50
+
+live:
+  data:
+    feed_type: "websocket"
+    bar_interval_seconds: 60
+    max_history: 5000
+    reconnect_attempts: 10
+  broker:
+    broker_type: "paper"
+    fill_delay_ms: 100
+  persistence:
+    enabled: true
+    state_dir: "state/"
+    save_interval_seconds: 300
+    max_snapshots: 10

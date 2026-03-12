@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install install-dev lint format type-check test test-cov clean help run run-ml run-baseline run-vol run-meanvar run-riskparity report run-config demo
+.PHONY: install install-dev lint format type-check test test-cov clean help run run-ml run-baseline run-vol run-meanvar run-riskparity report run-config demo paper
 
 # Default target
 help:
@@ -23,6 +23,7 @@ help:
 	@echo "  make run-riskparity Run risk parity optimized portfolio"
 	@echo "  make run-config CONFIG=path  Run backtest with a custom config file"
 	@echo "  make report       Run ALL configs and generate full comparison report"
+	@echo "  make paper        Run paper trading session (synthetic data)"
 	@echo "  make clean        Remove cache files"
 	@echo ""
 
@@ -106,6 +107,10 @@ run-ml: download-data
 run-config: download-data
 	@if [ -z "$(CONFIG)" ]; then echo "Usage: make run-config CONFIG=path/to/config.yaml"; exit 1; fi
 	$(PYTHON) ./scripts/run_backtest.py --config $(CONFIG)
+
+# Paper trading session (synthetic ticks, no live data needed)
+paper:
+	$(PYTHON) ./scripts/run_paper_trading.py --config configs/paper_trading_config.yaml
 
 # Full report: run ALL configs, generate report + charts
 report: download-data
