@@ -8,9 +8,13 @@ from pydantic import ValidationError
 
 from src.config import (
     BacktestConfig,
+    BrokerConfig,
     DataConfig,
     ExecutionConfig,
+    LiveConfig,
+    LiveDataConfig,
     OptimizationConfig,
+    PersistenceConfig,
     RiskConfig,
     SizingConfig,
     StrategyConfig,
@@ -380,3 +384,226 @@ class TestBacktestConfigExtended:
         assert config.sizing.parameters["risk_fraction"] == 0.03
         assert config.risk.max_drawdown_pct == 0.10
         assert config.optimization.rebalance_frequency == 10
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Live config models
+# ---------------------------------------------------------------------------
+
+
+class TestLiveDataConfig:
+    def test_defaults(self):
+        config = LiveDataConfig()
+        assert config.feed_type == "websocket"
+        assert config.url == ""
+        assert config.symbols == []
+        assert config.bar_interval_seconds == 60
+        assert config.max_history == 5000
+        assert config.reconnect_attempts == 10
+        assert config.reconnect_delay == 1.0
+
+    def test_custom_values(self):
+        config = LiveDataConfig(
+            feed_type="polling",
+            url="ws://example.com",
+            symbols=["AAPL", "MSFT"],
+            bar_interval_seconds=300,
+            max_history=1000,
+            reconnect_attempts=5,
+            reconnect_delay=2.0,
+        )
+        assert config.feed_type == "polling"
+        assert config.url == "ws://example.com"
+        assert config.symbols == ["AAPL", "MSFT"]
+        assert config.bar_interval_seconds == 300
+
+    def test_valid_feed_types(self):
+        for ft in ["websocket", "polling"]:
+            config = LiveDataConfig(feed_type=ft)
+            assert config.feed_type == ft
+
+    def test_invalid_feed_type(self):
+        with pytest.raises(ValidationError):
+            LiveDataConfig(feed_type="grpc")
+
+    def test_invalid_bar_interval(self):
+        with pytest.raises(ValidationError):
+            LiveDataConfig(bar_interval_seconds=0)
+
+    def test_invalid_max_history(self):
+        with pytest.raises(ValidationError):
+            LiveDataConfig(max_history=0)
+
+
+class TestBrokerConfig:
+    def test_defaults(self):
+        config = BrokerConfig()
+        assert config.broker_type == "paper"
+        assert config.api_key == ""
+        assert config.api_secret == ""
+        assert config.base_url == ""
+        assert config.paper_mode is True
+        assert config.fill_delay_ms == 100
+        assert config.slippage_model == "fixed"
+
+    def test_valid_broker_types(self):
+        for bt in ["paper", "alpaca", "ibkr"]:
+            config = BrokerConfig(broker_type=bt)
+            assert config.broker_type == bt
+
+    def test_invalid_broker_type(self):
+        with pytest.raises(ValidationError):
+            BrokerConfig(broker_type="robinhood")
+
+    def test_valid_slippage_models(self):
+        for sm in ["fixed", "proportional", "volume"]:
+            config = BrokerConfig(slippage_model=sm)
+            assert config.slippage_model == sm
+
+    def test_invalid_slippage_model(self):
+        with pytest.raises(ValidationError):
+            BrokerConfig(slippage_model="random")
+
+    def test_invalid_fill_delay(self):
+        with pytest.raises(ValidationError):
+            BrokerConfig(fill_delay_ms=-1)
+
+    def test_custom_values(self):
+        config = BrokerConfig(
+            broker_type="alpaca",
+            api_key="key123",
+            api_secret="secret456",
+            base_url="https://api.alpaca.markets",
+            paper_mode=False,
+            fill_delay_ms=50,
+            slippage_model="proportional",
+        )
+        assert config.api_key == "key123"
+        assert config.paper_mode is False
+
+
+class TestPersistenceConfig:
+    def test_defaults(self):
+        config = PersistenceConfig()
+        assert config.enabled is True
+        assert config.state_dir == "state/"
+        assert config.save_interval_seconds == 300
+        assert config.max_snapshots == 10
+
+    def test_custom_values(self):
+        config = PersistenceConfig(
+            enabled=False,
+            state_dir="/tmp/state",
+            save_interval_seconds=60,
+            max_snapshots=5,
+        )
+        assert config.enabled is False
+        assert config.state_dir == "/tmp/state"
+
+    def test_invalid_save_interval(self):
+        with pytest.raises(ValidationError):
+            PersistenceConfig(save_interval_seconds=0)
+
+    def test_invalid_max_snapshots(self):
+        with pytest.raises(ValidationError):
+            PersistenceConfig(max_snapshots=0)
+
+
+class TestLiveConfig:
+    def test_defaults(self):
+        config = LiveConfig()
+        assert config.data.feed_type == "websocket"
+        assert config.broker.broker_type == "paper"
+        assert config.persistence.enabled is True
+
+    def test_nested_override(self):
+        config = LiveConfig(
+            data=LiveDataConfig(url="ws://test", bar_interval_seconds=300),
+            broker=BrokerConfig(broker_type="alpaca"),
+        )
+        assert config.data.url == "ws://test"
+        assert config.data.bar_interval_seconds == 300
+        assert config.broker.broker_type == "alpaca"
+
+
+class TestBacktestConfigWithLive:
+    def _base_data(self) -> DataConfig:
+        return DataConfig(
+            symbols=["AAPL"],
+            start_date="2020-01-01",
+            end_date="2023-12-31",
+        )
+
+    def test_backwards_compatible_no_live(self):
+        """Existing configs without live section still work."""
+        config = BacktestConfig(
+            data=self._base_data(),
+            execution=ExecutionConfig(),
+            strategy=StrategyConfig(name="sma_crossover"),
+        )
+        assert config.live.data.feed_type == "websocket"
+        assert config.live.broker.broker_type == "paper"
+
+    def test_with_live_section(self):
+        config = BacktestConfig(
+            data=self._base_data(),
+            execution=ExecutionConfig(),
+            strategy=StrategyConfig(name="sma_crossover"),
+            live=LiveConfig(
+                data=LiveDataConfig(
+                    url="ws://stream.example.com",
+                    symbols=["AAPL"],
+                    bar_interval_seconds=300,
+                ),
+            ),
+        )
+        assert config.live.data.url == "ws://stream.example.com"
+        assert config.live.data.bar_interval_seconds == 300
+
+    def test_load_yaml_without_live(self, tmp_path):
+        config_data = {
+            "data": {
+                "symbols": ["AAPL"],
+                "start_date": "2020-01-01",
+                "end_date": "2023-12-31",
+            },
+            "execution": {},
+            "strategy": {"name": "sma_crossover"},
+        }
+        config_file = tmp_path / "no_live.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        assert config.live.data.feed_type == "websocket"
+        assert config.live.broker.broker_type == "paper"
+
+    def test_load_yaml_with_live(self, tmp_path):
+        config_data = {
+            "data": {
+                "symbols": ["AAPL"],
+                "start_date": "2020-01-01",
+                "end_date": "2023-12-31",
+            },
+            "execution": {},
+            "strategy": {"name": "sma_crossover"},
+            "live": {
+                "data": {
+                    "feed_type": "websocket",
+                    "url": "ws://stream.example.com",
+                    "bar_interval_seconds": 300,
+                },
+                "broker": {
+                    "broker_type": "paper",
+                    "fill_delay_ms": 50,
+                },
+            },
+        }
+        config_file = tmp_path / "with_live.yaml"
+        with open(config_file, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = load_config(str(config_file))
+        assert config.live.data.url == "ws://stream.example.com"
+        assert config.live.data.bar_interval_seconds == 300
+        assert config.live.broker.fill_delay_ms == 50
