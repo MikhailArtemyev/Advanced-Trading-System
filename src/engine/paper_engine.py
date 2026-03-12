@@ -270,3 +270,85 @@ class PaperTradingEngine:
             "equity": self._portfolio.get_equity(),
             "positions": self._portfolio.get_positions(),
         }
+
+    def get_state(self) -> dict[str, Any]:
+        """Return full engine state for persistence.
+
+        Returns a serializable dict suitable for StateManager.save_snapshot().
+        """
+        return {
+            "statistics": self.get_statistics(),
+            "cash": self._portfolio.cash,
+            "initial_capital": self._portfolio.initial_capital,
+            "trades": [
+                {
+                    "timestamp": str(t.timestamp),
+                    "symbol": t.symbol,
+                    "side": t.side,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                    "commission": t.commission,
+                    "pnl": t.pnl,
+                }
+                for t in self._portfolio.trades
+            ],
+            "orders": {
+                oid: {
+                    "order_id": o.order_id,
+                    "symbol": o.symbol,
+                    "side": o.side,
+                    "order_type": o.order_type,
+                    "quantity": o.quantity,
+                    "status": o.status.name,
+                    "filled_quantity": o.filled_quantity,
+                    "filled_avg_price": o.filled_avg_price,
+                }
+                for oid, o in self._order_manager.all_orders.items()
+            },
+        }
+
+    async def reconcile_positions(self) -> dict[str, Any]:
+        """Compare Portfolio positions against PaperBroker positions.
+
+        In paper mode these should always match, but this provides
+        an auditable check for correctness.
+
+        Returns:
+            Reconciliation report with matched status and discrepancies.
+        """
+        engine_positions = self._portfolio.get_positions()
+        broker_positions = await self._order_manager._broker.get_positions()
+
+        discrepancies: list[dict[str, Any]] = []
+        all_symbols = set(engine_positions.keys()) | set(broker_positions.keys())
+
+        for symbol in sorted(all_symbols):
+            engine_qty = 0
+            broker_qty = 0
+
+            if symbol in engine_positions:
+                pos = engine_positions[symbol]
+                engine_qty = pos["quantity"] if isinstance(pos, dict) else pos
+
+            if symbol in broker_positions:
+                bpos = broker_positions[symbol]
+                broker_qty = (
+                    int(bpos["quantity"]) if isinstance(bpos, dict) else int(bpos)
+                )
+
+            if engine_qty != broker_qty:
+                discrepancies.append(
+                    {
+                        "symbol": symbol,
+                        "engine_quantity": engine_qty,
+                        "broker_quantity": broker_qty,
+                        "difference": engine_qty - broker_qty,
+                    }
+                )
+
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "matched": len(discrepancies) == 0,
+            "symbols_checked": len(all_symbols),
+            "discrepancies": discrepancies,
+        }
