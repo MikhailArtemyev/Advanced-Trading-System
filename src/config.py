@@ -151,7 +151,7 @@ class LiveDataConfig(BaseModel):
     @field_validator("feed_type")
     @classmethod
     def validate_feed_type(cls, v: str) -> str:
-        allowed = {"websocket", "polling"}
+        allowed = {"websocket", "polling", "alpaca"}
         if v not in allowed:
             msg = f"feed_type must be one of {allowed}, got '{v}'"
             raise ValueError(msg)
