@@ -222,7 +222,7 @@ class PaperTradingEngine:
                     commission=abs(
                         broker_order.filled_avg_price
                         * broker_order.filled_quantity
-                        * 0.001
+                        * self._portfolio.commission_pct
                     ),
                     timestamp=broker_order.filled_at or datetime.now(),
                 )
@@ -306,6 +306,43 @@ class PaperTradingEngine:
                 for oid, o in self._order_manager.all_orders.items()
             },
         }
+
+    def restore_state(self, snapshot: dict[str, Any]) -> None:
+        """Restore engine state from a snapshot.
+
+        Restores cash, positions, and statistics from a previously
+        saved snapshot (from StateManager.load_latest_snapshot).
+
+        Args:
+            snapshot: Dict from StateManager, as produced by get_state().
+        """
+        # Restore cash
+        if "cash" in snapshot:
+            self._portfolio.cash = float(snapshot["cash"])
+            logger.info("Restored cash: %.2f", self._portfolio.cash)
+
+        # Restore positions
+        if "statistics" in snapshot:
+            stats = snapshot["statistics"]
+            positions = stats.get("positions", {})
+            for symbol, pos_data in positions.items():
+                if symbol in self._portfolio.positions:
+                    pos = self._portfolio.positions[symbol]
+                    if isinstance(pos_data, dict):
+                        pos.quantity = int(pos_data.get("quantity", 0))
+                        pos.avg_cost = float(pos_data.get("avg_cost", 0.0))
+                        pos.market_value = float(pos_data.get("market_value", 0.0))
+                        pos.unrealized_pnl = float(pos_data.get("unrealized_pnl", 0.0))
+                        pos.realized_pnl = float(pos_data.get("realized_pnl", 0.0))
+
+            # Restore counters
+            self.bars_processed = stats.get("bars_processed", 0)
+            self.events_processed = stats.get("events_processed", 0)
+            self.orders_submitted = stats.get("orders_submitted", 0)
+            self.orders_rejected = stats.get("orders_rejected", 0)
+            self.fills_processed = stats.get("fills_processed", 0)
+
+        logger.info("Engine state restored from snapshot")
 
     async def reconcile_positions(self) -> dict[str, Any]:
         """Compare Portfolio positions against PaperBroker positions.

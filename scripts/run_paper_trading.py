@@ -23,6 +23,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.broker.alpaca_broker import AlpacaBroker
 from src.broker.order_manager import OrderManager
 from src.broker.paper_broker import PaperBroker
 from src.config import BacktestConfig, load_config
@@ -86,14 +87,31 @@ def build_components(
         position_sizer=sizer,
     )
 
-    # Broker
-    broker = PaperBroker(
-        initial_capital=config.execution.initial_capital,
-        commission_pct=config.execution.commission_pct,
-        slippage_pct=config.execution.slippage_pct,
-        fill_delay_seconds=live_cfg.broker.fill_delay_ms / 1000.0,
-    )
-    broker._data_handler = data_handler
+    # Broker — select based on config
+    broker_type = live_cfg.broker.broker_type
+    if broker_type == "alpaca":
+        api_key = live_cfg.broker.api_key
+        api_secret = live_cfg.broker.api_secret
+        if not api_key or not api_secret:
+            logger.error(
+                "Alpaca broker requires api_key and api_secret in config "
+                "or ALPACA_API_KEY/ALPACA_API_SECRET env vars"
+            )
+            sys.exit(1)
+        broker = AlpacaBroker(
+            api_key=api_key,
+            api_secret=api_secret,
+            base_url=live_cfg.broker.base_url,
+            paper_mode=live_cfg.broker.paper_mode,
+        )
+    else:
+        broker = PaperBroker(
+            initial_capital=config.execution.initial_capital,
+            commission_pct=config.execution.commission_pct,
+            slippage_pct=config.execution.slippage_pct,
+            fill_delay_seconds=live_cfg.broker.fill_delay_ms / 1000.0,
+        )
+        broker._data_handler = data_handler
 
     # Order manager
     order_manager = OrderManager(broker=broker)
@@ -193,6 +211,7 @@ async def run_paper_trading(config: BacktestConfig) -> None:
     # Try to restore from last snapshot
     snapshot = state_manager.load_latest_snapshot()
     if snapshot is not None:
+        engine.restore_state(snapshot)
         logger.info(
             "Restored state from snapshot: %s", snapshot.get("_snapshot_timestamp")
         )
