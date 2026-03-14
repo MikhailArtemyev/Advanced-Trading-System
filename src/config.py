@@ -170,12 +170,31 @@ class DatabaseConfig(BaseModel):
     save_interval_seconds: int = Field(default=300, gt=0)
 
 
+class AlertConfig(BaseModel):
+    """Configuration for alerting and notifications."""
+
+    enabled: bool = False
+    channels: list[dict[str, Any]] = Field(default_factory=list)
+    min_level: str = "warning"
+    cooldown_seconds: float = Field(default=300.0, ge=0)
+
+    @field_validator("min_level")
+    @classmethod
+    def validate_min_level(cls, v: str) -> str:
+        allowed = {"info", "warning", "critical"}
+        if v not in allowed:
+            msg = f"min_level must be one of {allowed}, got '{v}'"
+            raise ValueError(msg)
+        return v
+
+
 class LiveConfig(BaseModel):
     """Top-level live/paper trading configuration."""
 
     data: LiveDataConfig = Field(default_factory=LiveDataConfig)
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    alerts: AlertConfig = Field(default_factory=AlertConfig)
 
 
 class BacktestConfig(BaseModel):

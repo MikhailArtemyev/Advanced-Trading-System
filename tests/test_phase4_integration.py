@@ -523,3 +523,22 @@ class TestModuleExports:
         assert BarAggregator is not None
         assert LiveDataFeed is not None
         assert LiveDataHandler is not None
+
+    def test_alerts_exports(self):
+        from src.alerts import (
+            AlertChannel,
+            AlertLevel,
+            AlertManager,
+            AlertMessage,
+            EmailAlert,
+            SlackAlert,
+            WebhookAlert,
+        )
+
+        assert AlertChannel is not None
+        assert AlertLevel is not None
+        assert AlertManager is not None
+        assert AlertMessage is not None
+        assert EmailAlert is not None
+        assert SlackAlert is not None
+        assert WebhookAlert is not None
