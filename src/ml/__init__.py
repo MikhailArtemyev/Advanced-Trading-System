@@ -1,15 +1,9 @@
-"""ML model integration for signal generation."""
+"""ML model base types for validation and future model implementations."""
 
 from .base_model import MLModel, ModelPrediction, TrainResult
-from .lightgbm_model import LightGBMSignalModel
-from .ml_strategy import MLStrategy
-from .xgboost_model import XGBoostSignalModel
 
 __all__ = [
     "MLModel",
     "ModelPrediction",
     "TrainResult",
-    "XGBoostSignalModel",
-    "LightGBMSignalModel",
-    "MLStrategy",
 ]

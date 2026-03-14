@@ -86,32 +86,6 @@ class FeatureConfig(BaseModel):
     )
 
 
-class MLConfig(BaseModel):
-    """Configuration for ML model."""
-
-    model: str = "xgboost"
-    mode: str = "classification"
-    parameters: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("model")
-    @classmethod
-    def validate_model(cls, v: str) -> str:
-        allowed = {"xgboost", "lightgbm"}
-        if v not in allowed:
-            msg = f"ml model must be one of {allowed}, got '{v}'"
-            raise ValueError(msg)
-        return v
-
-    @field_validator("mode")
-    @classmethod
-    def validate_mode(cls, v: str) -> str:
-        allowed = {"classification", "regression"}
-        if v not in allowed:
-            msg = f"ml mode must be one of {allowed}, got '{v}'"
-            raise ValueError(msg)
-        return v
-
-
 class ValidationConfig(BaseModel):
     """Configuration for CPCV validation."""
 
@@ -215,7 +189,6 @@ class BacktestConfig(BaseModel):
     risk: RiskConfig = Field(default_factory=RiskConfig)
     optimization: OptimizationConfig = Field(default_factory=OptimizationConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
-    ml: MLConfig = Field(default_factory=MLConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
     regime: RegimeConfig = Field(default_factory=RegimeConfig)
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
