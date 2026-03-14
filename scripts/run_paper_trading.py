@@ -23,6 +23,11 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.alerts.alert_manager import AlertManager
+from src.alerts.base_alert import AlertChannel, AlertLevel
+from src.alerts.email_alert import EmailAlert
+from src.alerts.slack_alert import SlackAlert
+from src.alerts.webhook_alert import WebhookAlert
 from src.broker.alpaca_broker import AlpacaBroker
 from src.broker.order_manager import OrderManager
 from src.broker.paper_broker import PaperBroker
@@ -44,6 +49,47 @@ logging.basicConfig(
 logger = logging.getLogger("paper_trading")
 
 
+def build_alert_channels(config: BacktestConfig) -> list[AlertChannel]:
+    """Build alert channels from config."""
+    channels: list[AlertChannel] = []
+    alert_cfg = config.live.alerts
+    if not alert_cfg.enabled:
+        return channels
+
+    for ch_cfg in alert_cfg.channels:
+        ch_type = ch_cfg.get("type", "")
+        if ch_type == "slack":
+            channels.append(
+                SlackAlert(
+                    webhook_url=ch_cfg.get("webhook_url", ""),
+                    channel=ch_cfg.get("channel", ""),
+                )
+            )
+        elif ch_type == "email":
+            channels.append(
+                EmailAlert(
+                    smtp_host=ch_cfg.get("smtp_host", ""),
+                    smtp_port=ch_cfg.get("smtp_port", 587),
+                    username=ch_cfg.get("username", ""),
+                    password=ch_cfg.get("password", ""),
+                    from_address=ch_cfg.get("from_address", ""),
+                    to_addresses=ch_cfg.get("to_addresses", []),
+                )
+            )
+        elif ch_type == "webhook":
+            channels.append(
+                WebhookAlert(
+                    url=ch_cfg.get("url", ""),
+                    headers=ch_cfg.get("headers", {}),
+                    method=ch_cfg.get("method", "POST"),
+                )
+            )
+        else:
+            logger.warning("Unknown alert channel type: %s", ch_type)
+
+    return channels
+
+
 def build_components(
     config: BacktestConfig,
 ) -> tuple[
@@ -55,6 +101,7 @@ def build_components(
     SQLStorage,
     HealthMonitor,
     BarAggregator,
+    AlertManager | None,
 ]:
     """Build all paper trading components from config."""
     symbols = config.data.symbols
@@ -145,6 +192,23 @@ def build_components(
         max_event_latency_ms=500.0,
     )
 
+    # Alert manager
+    alert_channels = build_alert_channels(config)
+    alert_manager: AlertManager | None = None
+    if alert_channels:
+        level_map = {
+            "info": AlertLevel.INFO,
+            "warning": AlertLevel.WARNING,
+            "critical": AlertLevel.CRITICAL,
+        }
+        alert_manager = AlertManager(
+            channels=alert_channels,
+            min_level=level_map.get(
+                live_cfg.alerts.min_level, AlertLevel.WARNING
+            ),
+            cooldown_seconds=live_cfg.alerts.cooldown_seconds,
+        )
+
     return (
         data_handler,
         strategy,
@@ -154,6 +218,7 @@ def build_components(
         storage,
         health_monitor,
         aggregator,
+        alert_manager,
     )
 
 
@@ -201,6 +266,7 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         storage,
         health_monitor,
         aggregator,
+        alert_manager,
     ) = build_components(config)
 
     # Session ID is already set on storage — extract from portfolio
@@ -235,6 +301,10 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         )
 
     health_monitor.add_alert_callback(on_health_alert)
+
+    # Wire alert manager into health monitor
+    if alert_manager is not None:
+        health_monitor.add_alert_callback(alert_manager.on_health_report)
 
     # Graceful shutdown
     stop_event = asyncio.Event()
