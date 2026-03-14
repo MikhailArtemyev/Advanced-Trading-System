@@ -26,6 +26,7 @@ from src.events.event import (
 )
 from src.events.queue import EventQueue
 from src.risk.risk_manager import RiskManager
+from src.storage.backend import StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,8 @@ class PaperTradingEngine:
         risk_manager: RiskManager | None = None,
         event_poll_interval: float = 0.01,
         bar_poll_interval: float = 0.1,
+        storage: StorageBackend | None = None,
+        session_id: str = "",
     ) -> None:
         self._data_handler = data_handler
         self._strategy = strategy
@@ -71,6 +74,10 @@ class PaperTradingEngine:
         self._events = EventQueue()
         self._running = False
         self._started_at: datetime | None = None
+
+        # Storage
+        self._storage = storage
+        self._session_id = session_id
 
         # Statistics
         self.bars_processed = 0
@@ -343,6 +350,21 @@ class PaperTradingEngine:
             self.fills_processed = stats.get("fills_processed", 0)
 
         logger.info("Engine state restored from snapshot")
+
+    def restore_from_storage(self) -> bool:
+        """Restore engine state from the database.
+
+        Returns True if state was found and restored, False otherwise.
+        """
+        if self._storage is None or not self._session_id:
+            return False
+
+        state = self._storage.load_engine_state(self._session_id)
+        if state is None:
+            return False
+
+        self.restore_state(state)
+        return True
 
     async def reconcile_positions(self) -> dict[str, Any]:
         """Compare Portfolio positions against PaperBroker positions.

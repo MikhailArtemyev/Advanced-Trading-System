@@ -25,6 +25,7 @@ from ..events.event import (
 )
 from ..events.queue import EventQueue
 from ..risk.risk_manager import RiskManager
+from ..storage.backend import StorageBackend
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -135,6 +136,7 @@ class BacktestEngine:
         execution_handler: ExecutionProtocol,
         performance_tracker: PerformanceTrackerProtocol | None = None,
         risk_manager: RiskManager | None = None,
+        storage: StorageBackend | None = None,
     ) -> None:
         """Initialize the backtest engine.
 
@@ -145,6 +147,7 @@ class BacktestEngine:
             execution_handler: Order execution simulator
             performance_tracker: Optional performance tracker
             risk_manager: Optional pre-trade risk manager
+            storage: Optional storage backend for persisting results
         """
         self.data_handler = data_handler
         self.strategy = strategy
@@ -152,6 +155,7 @@ class BacktestEngine:
         self.execution_handler = execution_handler
         self.performance_tracker = performance_tracker
         self.risk_manager = risk_manager
+        self.storage = storage
 
         self.events = EventQueue()
 
@@ -220,7 +224,34 @@ class BacktestEngine:
         print(f"  Events processed: {self.event_count}")
         print(f"  Duration: {duration:.2f} seconds")
 
+        # Persist results to storage if configured
+        if self.storage is not None:
+            self._persist_to_storage()
+
         return self._generate_results()
+
+    def _persist_to_storage(self) -> None:
+        """Bulk-write backtest results to storage."""
+        if self.storage is None:
+            return
+
+        session_id = self.storage.create_session(
+            session_type="backtest",
+            config={},
+            initial_capital=getattr(self.portfolio, "initial_capital", 0.0),
+        )
+
+        # Bulk insert trades
+        trades = self.portfolio.get_trade_history()
+        if trades and hasattr(self.storage, "bulk_record_trades"):
+            self.storage.bulk_record_trades(session_id, trades)
+
+        # Bulk insert equity snapshots
+        equity_history = getattr(self.portfolio, "equity_history", [])
+        if equity_history and hasattr(self.storage, "bulk_record_equity"):
+            self.storage.bulk_record_equity(session_id, equity_history)
+
+        self.storage.end_session(session_id, self.portfolio.get_equity())
 
     def _process_events(self) -> None:
         """Process all events in queue until empty."""

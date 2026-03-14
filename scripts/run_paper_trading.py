@@ -2,10 +2,10 @@
 """Paper Trading Script — run a live paper trading session.
 
 Wires together LiveDataHandler, PaperBroker, OrderManager,
-PaperTradingEngine, StateManager, and HealthMonitor.
+PaperTradingEngine, SQLStorage, and HealthMonitor.
 
-Supports graceful shutdown (Ctrl+C), periodic state snapshots,
-and optional state recovery from the latest snapshot.
+Supports graceful shutdown (Ctrl+C), periodic state saves to SQLite,
+and optional state recovery from the database.
 
 Usage:
     python scripts/run_paper_trading.py --config configs/paper_trading_config.yaml
@@ -28,13 +28,13 @@ from src.broker.order_manager import OrderManager
 from src.broker.paper_broker import PaperBroker
 from src.config import BacktestConfig, load_config
 from src.engine.paper_engine import PaperTradingEngine
-from src.engine.state_manager import StateManager
 from src.live.bar_aggregator import BarAggregator, Tick
 from src.live.data_handler import LiveDataHandler
 from src.monitoring.health import HealthMonitor
 from src.portfolio.portfolio import Portfolio
 from src.risk.position_sizer import FixedFractionSizer
 from src.risk.risk_manager import RiskLimits, RiskManager
+from src.storage.sql_storage import SQLStorage
 from src.strategy.sma_crossover import SMACrossoverStrategy
 
 logging.basicConfig(
@@ -52,7 +52,7 @@ def build_components(
     Portfolio,
     OrderManager,
     RiskManager | None,
-    StateManager,
+    SQLStorage,
     HealthMonitor,
     BarAggregator,
 ]:
@@ -79,12 +79,22 @@ def build_components(
     sizer_params = config.sizing.parameters
     sizer = FixedFractionSizer(fraction=sizer_params.get("fraction", 0.05))
 
+    # Storage
+    storage = SQLStorage(db_url=live_cfg.database.db_url)
+    session_id = storage.create_session(
+        session_type="paper",
+        config=config.model_dump(),
+        initial_capital=config.execution.initial_capital,
+    )
+
     # Portfolio
     portfolio = Portfolio(
         initial_capital=config.execution.initial_capital,
         symbols=symbols,
         commission_pct=config.execution.commission_pct,
         position_sizer=sizer,
+        storage=storage,
+        session_id=session_id,
     )
 
     # Broker — select based on config
@@ -129,12 +139,6 @@ def build_components(
         )
         risk_manager = RiskManager(limits=limits)
 
-    # State manager
-    state_manager = StateManager(
-        state_dir=live_cfg.persistence.state_dir,
-        max_snapshots=live_cfg.persistence.max_snapshots,
-    )
-
     # Health monitor
     health_monitor = HealthMonitor(
         max_bar_age_seconds=live_cfg.data.bar_interval_seconds * 2.0,
@@ -147,7 +151,7 @@ def build_components(
         portfolio,
         order_manager,
         risk_manager,
-        state_manager,
+        storage,
         health_monitor,
         aggregator,
     )
@@ -194,10 +198,13 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         portfolio,
         order_manager,
         risk_manager,
-        state_manager,
+        storage,
         health_monitor,
         aggregator,
     ) = build_components(config)
+
+    # Session ID is already set on storage — extract from portfolio
+    session_id = portfolio.session_id
 
     # Build engine
     engine = PaperTradingEngine(
@@ -206,15 +213,13 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         portfolio=portfolio,
         order_manager=order_manager,
         risk_manager=risk_manager,
+        storage=storage,
+        session_id=session_id,
     )
 
-    # Try to restore from last snapshot
-    snapshot = state_manager.load_latest_snapshot()
-    if snapshot is not None:
-        engine.restore_state(snapshot)
-        logger.info(
-            "Restored state from snapshot: %s", snapshot.get("_snapshot_timestamp")
-        )
+    # Try to restore from database
+    if engine.restore_from_storage():
+        logger.info("Restored state from database for session %s", session_id)
     else:
         logger.info("No previous state found — starting fresh")
 
@@ -251,7 +256,7 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         bar_interval_seconds=live_cfg.data.bar_interval_seconds,
     )
 
-    save_interval = live_cfg.persistence.save_interval_seconds
+    save_interval = live_cfg.database.save_interval_seconds
 
     async def feed_ticks() -> None:
         """Feed synthetic ticks to the aggregator."""
@@ -276,13 +281,13 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         await engine.stop()
 
     async def periodic_save() -> None:
-        """Periodically save state snapshots."""
+        """Periodically save engine state to database."""
         while not stop_event.is_set():
             await asyncio.sleep(min(save_interval, 5))  # faster for demo
             if engine.is_running:
                 state = engine.get_state()
-                state_manager.save_snapshot(state)
-                logger.info("State snapshot saved")
+                storage.save_engine_state(session_id, state)
+                logger.info("Engine state saved to database")
 
     async def monitor_health() -> None:
         """Periodically check health."""
@@ -304,6 +309,7 @@ async def run_paper_trading(config: BacktestConfig) -> None:
     print(f"  Strategy: {config.strategy.name} {dict(config.strategy.parameters)}")
     print(f"  Capital:  ${config.execution.initial_capital:,.2f}")
     print(f"  Broker:   {live_cfg.broker.broker_type}")
+    print(f"  Storage:  {live_cfg.database.db_url}")
     print("=" * 60 + "\n")
 
     # Connect broker
@@ -321,8 +327,11 @@ async def run_paper_trading(config: BacktestConfig) -> None:
     finally:
         # Final state save
         state = engine.get_state()
-        state_manager.save_snapshot(state)
-        logger.info("Final state saved")
+        storage.save_engine_state(session_id, state)
+        logger.info("Final state saved to database")
+
+        # End session
+        storage.end_session(session_id, portfolio.get_equity())
 
         # Reconciliation check
         report = await engine.reconcile_positions()
@@ -337,18 +346,21 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         # Disconnect
         await order_manager._broker.disconnect()
 
+        # Close storage
+        storage.close()
+
         # Print summary
         stats = engine.get_statistics()
         print("\n" + "=" * 60)
         print("  SESSION SUMMARY")
         print("=" * 60)
+        print(f"  Session ID:        {session_id}")
         print(f"  Bars processed:    {stats['bars_processed']}")
         print(f"  Orders submitted:  {stats['orders_submitted']}")
         print(f"  Orders rejected:   {stats['orders_rejected']}")
         print(f"  Fills processed:   {stats['fills_processed']}")
         print(f"  Final equity:      ${stats['equity']:,.2f}")
         print(f"  Health status:     {health_report.status.value}")
-        print(f"  Snapshots saved:   {len(state_manager.list_snapshots())}")
         print("=" * 60 + "\n")
 
 
