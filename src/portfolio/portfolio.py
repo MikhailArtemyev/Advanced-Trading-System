@@ -25,6 +25,7 @@ from ..events.event import (
 )
 from ..events.queue import EventQueue
 from ..risk.position_sizer import FixedFractionSizer, PositionSizer
+from ..storage.backend import StorageBackend
 from .correlation import CorrelationTracker
 
 
@@ -101,6 +102,8 @@ class Portfolio:
         position_size_pct: float = 0.1,
         position_sizer: PositionSizer | None = None,
         correlation_tracker: CorrelationTracker | None = None,
+        storage: StorageBackend | None = None,
+        session_id: str = "",
     ) -> None:
         """Initialize the portfolio.
 
@@ -113,6 +116,8 @@ class Portfolio:
                            FixedFractionSizer with the given position_size_pct.
             correlation_tracker: Optional correlation tracker for multi-asset
                                 monitoring. If None, no correlation tracking.
+            storage: Optional storage backend for persisting trades/equity.
+            session_id: Session ID for storage. Required if storage is set.
         """
         self.initial_capital = initial_capital
         self.cash = initial_capital
@@ -139,6 +144,10 @@ class Portfolio:
 
         # Optional correlation tracker
         self.correlation_tracker = correlation_tracker
+
+        # Optional persistence
+        self.storage = storage
+        self.session_id = session_id
 
     def set_event_queue(self, events: EventQueue) -> None:
         """Set event queue for emitting orders.
@@ -380,6 +389,9 @@ class Portfolio:
         )
         self.trades.append(trade)
 
+        if self.storage is not None:
+            self.storage.record_trade(self.session_id, trade)
+
     def update_timeindex(self, timestamp: datetime) -> None:
         """Update portfolio valuation at current timestamp.
 
@@ -407,17 +419,17 @@ class Portfolio:
 
         equity = self.get_equity()
 
-        self.equity_history.append(
-            {
-                "timestamp": timestamp,
-                "equity": equity,
-                "cash": self.cash,
-                "positions_value": equity - self.cash,
-                "num_positions": sum(
-                    1 for p in self.positions.values() if p.quantity != 0
-                ),
-            }
-        )
+        snapshot = {
+            "timestamp": timestamp,
+            "equity": equity,
+            "cash": self.cash,
+            "positions_value": equity - self.cash,
+            "num_positions": sum(1 for p in self.positions.values() if p.quantity != 0),
+        }
+        self.equity_history.append(snapshot)
+
+        if self.storage is not None:
+            self.storage.record_equity_snapshot(self.session_id, snapshot)
 
     def get_equity(self) -> float:
         """Calculate total portfolio equity.

@@ -14,13 +14,13 @@ import pytest
 from src.broker.order_manager import OrderManager
 from src.broker.paper_broker import PaperBroker
 from src.engine.paper_engine import PaperTradingEngine
-from src.engine.state_manager import StateManager
 from src.live.bar_aggregator import BarAggregator
 from src.live.data_feed import Tick
 from src.live.data_handler import LiveDataHandler
 from src.monitoring.health import HealthMonitor, HealthStatus
 from src.portfolio.portfolio import Portfolio
 from src.risk.risk_manager import RiskLimits, RiskManager
+from src.storage.sql_storage import SQLStorage
 from src.strategy.sma_crossover import SMACrossoverStrategy
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ class TestFullPipeline:
 
 
 class TestStatePersistenceRoundTrip:
-    """Save → load snapshot, verify state preserved."""
+    """Save → load engine state via SQLStorage, verify state preserved."""
 
     @pytest.mark.asyncio
     async def test_save_and_load_state(self, tmp_path):
@@ -178,36 +178,48 @@ class TestStatePersistenceRoundTrip:
         ticks = _make_ticks("TEST", 100.0, n_minutes=2, bar_seconds=5)
         await _run_engine_with_ticks(engine, aggregator, ticks)
 
-        # Save state
-        sm = StateManager(state_dir=str(tmp_path), max_snapshots=5)
+        # Save state to SQLite
+        db_path = tmp_path / "test.db"
+        storage = SQLStorage(db_url=f"sqlite:///{db_path}")
+        session_id = storage.create_session(
+            session_type="paper", config={}, initial_capital=100_000.0
+        )
         state = engine.get_state()
-        sm.save_snapshot(state)
+        storage.save_engine_state(session_id, state)
 
         # Load and verify
-        loaded = sm.load_latest_snapshot()
+        loaded = storage.load_engine_state(session_id)
         assert loaded is not None
         assert loaded["cash"] == state["cash"]
         assert (
             loaded["statistics"]["bars_processed"]
             == state["statistics"]["bars_processed"]
         )
+        storage.close()
 
     @pytest.mark.asyncio
-    async def test_multiple_snapshots_retain_latest(self, tmp_path):
+    async def test_multiple_saves_loads_latest(self, tmp_path):
         symbols = ["TEST"]
         aggregator = BarAggregator(interval=timedelta(seconds=5))
         engine, dh, portfolio, broker, om = _build_engine(symbols, aggregator)
 
-        sm = StateManager(state_dir=str(tmp_path), max_snapshots=3)
+        db_path = tmp_path / "test.db"
+        storage = SQLStorage(db_url=f"sqlite:///{db_path}")
+        session_id = storage.create_session(
+            session_type="paper", config={}, initial_capital=100_000.0
+        )
+
+        # Save multiple states with increasing cash values
         for i in range(5):
             state = engine.get_state()
-            state["snapshot_index"] = i
-            sm.save_snapshot(state)
+            state["cash"] = float(i * 1000)
+            storage.save_engine_state(session_id, state)
 
-        loaded = sm.load_latest_snapshot()
+        # Load should return the latest (highest cash)
+        loaded = storage.load_engine_state(session_id)
         assert loaded is not None
-        assert loaded["snapshot_index"] == 4
-        assert len(sm.list_snapshots()) == 3
+        assert loaded["cash"] == 4000.0
+        storage.close()
 
 
 class TestReconciliation:
@@ -455,7 +467,7 @@ class TestConfigBackwardCompatibility:
         from src.config import load_config
 
         config = load_config("configs/backtest_baseline.yaml")
-        assert config.live.persistence.enabled is True
+        assert config.live.database.enabled is True
 
     def test_paper_trading_config_loads(self):
         from src.config import load_config
@@ -463,17 +475,23 @@ class TestConfigBackwardCompatibility:
         config = load_config("configs/paper_trading_config.yaml")
         assert config.live.broker.broker_type == "paper"
         assert config.live.data.bar_interval_seconds == 60
-        assert config.live.persistence.max_snapshots == 10
+        assert config.live.database.save_interval_seconds == 300
 
 
 class TestModuleExports:
     """Verify all new packages have proper exports."""
 
     def test_engine_exports(self):
-        from src.engine import PaperTradingEngine, StateManager
+        from src.engine import PaperTradingEngine
 
         assert PaperTradingEngine is not None
-        assert StateManager is not None
+
+    def test_storage_exports(self):
+        from src.storage import NullStorage, SQLStorage, StorageBackend
+
+        assert StorageBackend is not None
+        assert SQLStorage is not None
+        assert NullStorage is not None
 
     def test_broker_exports(self):
         from src.broker import (

@@ -14,11 +14,11 @@ import pytest
 from src.broker.order_manager import OrderManager
 from src.broker.paper_broker import PaperBroker
 from src.engine.paper_engine import PaperTradingEngine
-from src.engine.state_manager import StateManager
 from src.live.bar_aggregator import BarAggregator
 from src.live.data_feed import Tick
 from src.live.data_handler import LiveDataHandler
 from src.portfolio.portfolio import Portfolio
+from src.storage.sql_storage import SQLStorage
 from src.strategy.sma_crossover import SMACrossoverStrategy
 
 
@@ -149,12 +149,16 @@ class TestSoakStability:
 
     @pytest.mark.asyncio
     async def test_state_snapshots_on_schedule(self, tmp_path):
-        """Verify state snapshots can be saved periodically."""
+        """Verify engine state can be saved periodically to SQLite."""
         symbols = ["TEST"]
         aggregator = BarAggregator(interval=timedelta(seconds=2))
         engine, dh, portfolio, broker = _build_soak_engine(symbols, aggregator)
 
-        sm = StateManager(state_dir=str(tmp_path), max_snapshots=10)
+        db_path = tmp_path / "soak.db"
+        storage = SQLStorage(db_url=f"sqlite:///{db_path}")
+        session_id = storage.create_session(
+            session_type="paper", config={}, initial_capital=100_000.0
+        )
         ticks = _generate_soak_ticks("TEST", 100.0, duration_seconds=5)
 
         async def feed_save_stop():
@@ -165,18 +169,19 @@ class TestSoakStability:
                     aggregator.on_tick(tick)
                 await asyncio.sleep(0.01)
                 if i % 100 == 0 and engine.bars_processed > 0:
-                    sm.save_snapshot(engine.get_state())
+                    storage.save_engine_state(session_id, engine.get_state())
                     save_count += 1
             await asyncio.sleep(0.2)
-            sm.save_snapshot(engine.get_state())  # final save
+            storage.save_engine_state(session_id, engine.get_state())
             await engine.stop()
 
         await broker.connect()
         await asyncio.gather(engine.start(), feed_save_stop())
         await broker.disconnect()
 
-        snapshots = sm.list_snapshots()
-        assert len(snapshots) >= 1
+        loaded = storage.load_engine_state(session_id)
+        assert loaded is not None
+        storage.close()
 
     @pytest.mark.asyncio
     async def test_consistent_equity_tracking(self):

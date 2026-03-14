@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.backtest.engine import BacktestEngine
 from src.config import BacktestConfig, load_config
+from src.storage.null_storage import NullStorage
+from src.storage.sql_storage import SQLStorage
 from src.data.data_handler import DataHandler, HistoricalCSVDataHandler
 from src.data.yfinance_handler import YFinanceDataHandler
 from src.execution.execution_handler import ExecutionHandler
@@ -186,6 +188,13 @@ def main() -> None:
         initial_capital=config.execution.initial_capital,
     )
 
+    # Storage — use SQLite if enabled in config, otherwise NullStorage
+    db_cfg = config.live.database
+    if db_cfg.enabled:
+        storage = SQLStorage(db_url=db_cfg.db_url)
+    else:
+        storage = NullStorage()
+
     # Create and run backtest engine
     engine = BacktestEngine(
         data_handler=data_handler,
@@ -194,9 +203,13 @@ def main() -> None:
         execution_handler=execution_handler,
         performance_tracker=performance_tracker,
         risk_manager=risk_manager,
+        storage=storage,
     )
 
     results = engine.run()
+
+    # Close storage
+    storage.close()
 
     # Print performance report
     performance_tracker.print_report(

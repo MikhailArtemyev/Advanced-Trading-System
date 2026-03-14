@@ -162,13 +162,12 @@ class BrokerConfig(BaseModel):
         return v
 
 
-class PersistenceConfig(BaseModel):
-    """Configuration for state persistence."""
+class DatabaseConfig(BaseModel):
+    """Configuration for SQLite persistence."""
 
     enabled: bool = True
-    state_dir: str = "state/"
+    db_url: str = "sqlite:///trading.db"
     save_interval_seconds: int = Field(default=300, gt=0)
-    max_snapshots: int = Field(default=10, ge=1)
 
 
 class LiveConfig(BaseModel):
@@ -176,7 +175,7 @@ class LiveConfig(BaseModel):
 
     data: LiveDataConfig = Field(default_factory=LiveDataConfig)
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
-    persistence: PersistenceConfig = Field(default_factory=PersistenceConfig)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
 
 
 class BacktestConfig(BaseModel):
