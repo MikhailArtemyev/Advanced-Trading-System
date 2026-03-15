@@ -34,7 +34,10 @@ from src.risk.risk_manager import RiskLimits, RiskManager
 from src.storage.null_storage import NullStorage
 from src.storage.sql_storage import SQLStorage
 from src.strategy.base_strategy import Strategy
+from src.strategy.mean_reversion import MeanReversionStrategy
+from src.strategy.momentum import MomentumStrategy
 from src.strategy.multi_asset_sma import MultiAssetSMAStrategy
+from src.strategy.pairs_trading import PairsTradingStrategy
 from src.strategy.sma_crossover import SMACrossoverStrategy
 
 
@@ -118,11 +121,22 @@ def build_strategy(
     """Build strategy based on config and optimizer.
 
     Auto-selects MultiAssetSMAStrategy when multiple symbols AND an
-    optimizer are configured.
+    optimizer are configured (for sma_crossover).
     """
     symbols = config.data.symbols
     params = dict(config.strategy.parameters)
+    name = config.strategy.name
 
+    if name == "momentum":
+        return MomentumStrategy(symbols=symbols, parameters=params)
+
+    if name == "mean_reversion":
+        return MeanReversionStrategy(symbols=symbols, parameters=params)
+
+    if name == "pairs_trading":
+        return PairsTradingStrategy(symbols=symbols, parameters=params)
+
+    # Default: sma_crossover (with multi-asset variant when optimizer present)
     if len(symbols) > 1 and optimizer is not None:
         params.setdefault(
             "rebalance_frequency", config.optimization.rebalance_frequency
