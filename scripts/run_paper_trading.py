@@ -471,6 +471,22 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
+
+    # Startup validation
+    issues = config.validate_for_live()
+    if issues:
+        for issue in issues:
+            if issue.startswith("ERROR:"):
+                logger.error(issue)
+            else:
+                logger.warning(issue)
+        errors = [i for i in issues if i.startswith("ERROR:")]
+        if errors:
+            logger.error(
+                "Configuration validation failed with %d error(s)", len(errors)
+            )
+            sys.exit(1)
+
     asyncio.run(run_paper_trading(config, dashboard=args.dashboard))
 
 

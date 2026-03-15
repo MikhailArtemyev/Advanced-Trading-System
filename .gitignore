@@ -75,3 +75,4 @@ Thumbs.db
 *.pem
 *.key
 credentials.json
+/.env.example
