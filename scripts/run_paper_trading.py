@@ -203,9 +203,7 @@ def build_components(
         }
         alert_manager = AlertManager(
             channels=alert_channels,
-            min_level=level_map.get(
-                live_cfg.alerts.min_level, AlertLevel.WARNING
-            ),
+            min_level=level_map.get(live_cfg.alerts.min_level, AlertLevel.WARNING),
             cooldown_seconds=live_cfg.alerts.cooldown_seconds,
         )
 
