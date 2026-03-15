@@ -43,10 +43,10 @@ lint-fix:
 
 # Formatting
 format:
-	black src/ tests/
+	black src/ tests/ scripts/
 
 format-check:
-	black --check src/ tests/
+	black --check src/ tests/ scripts/
 
 # Type checking
 type-check:

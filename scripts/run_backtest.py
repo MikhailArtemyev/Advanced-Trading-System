@@ -110,7 +110,6 @@ def build_optimizer(config: BacktestConfig) -> PortfolioOptimizer | None:
         raise ValueError(msg)
 
 
-
 def build_strategy(
     config: BacktestConfig,
     optimizer: PortfolioOptimizer | None = None,
