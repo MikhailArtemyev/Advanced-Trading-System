@@ -23,6 +23,9 @@ hmmlearn>=0.3.0
 # Live Data / Async
 aiohttp>=3.9.0
 
+# Dashboard
+rich>=13.0.0
+
 # Experiment Tracking
 mlflow>=2.0.0
 

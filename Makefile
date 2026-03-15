@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install install-dev lint format type-check test test-cov clean help run run-baseline run-vol run-meanvar run-riskparity report run-config demo paper
+.PHONY: install install-dev lint format type-check test test-cov clean help run run-baseline run-vol run-meanvar run-riskparity report run-config demo paper paper-dashboard
 
 # Default target
 help:
@@ -106,6 +106,10 @@ run-config: download-data
 # Paper trading session (synthetic ticks, no live data needed)
 paper:
 	$(PYTHON) ./scripts/run_paper_trading.py --config configs/paper_trading_config.yaml
+
+# Paper trading with Rich terminal dashboard
+paper-dashboard:
+	$(PYTHON) ./scripts/run_paper_trading.py --config configs/paper_trading_config.yaml --dashboard
 
 # Full report: run ALL configs, generate report + charts
 report: download-data
