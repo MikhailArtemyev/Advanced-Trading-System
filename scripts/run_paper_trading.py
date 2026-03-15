@@ -32,6 +32,7 @@ from src.broker.alpaca_broker import AlpacaBroker
 from src.broker.order_manager import OrderManager
 from src.broker.paper_broker import PaperBroker
 from src.config import BacktestConfig, load_config
+from src.dashboard.terminal_ui import TradingDashboard
 from src.engine.paper_engine import PaperTradingEngine
 from src.live.bar_aggregator import BarAggregator, Tick
 from src.live.data_handler import LiveDataHandler
@@ -253,7 +254,7 @@ def generate_synthetic_ticks(
     return ticks
 
 
-async def run_paper_trading(config: BacktestConfig) -> None:
+async def run_paper_trading(config: BacktestConfig, dashboard: bool = False) -> None:
     """Run a paper trading session."""
     (
         data_handler,
@@ -307,13 +308,7 @@ async def run_paper_trading(config: BacktestConfig) -> None:
     # Graceful shutdown
     stop_event = asyncio.Event()
 
-    def handle_signal() -> None:
-        logger.info("Shutdown signal received")
-        stop_event.set()
-
     loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, handle_signal)
 
     # Generate ticks for demo
     symbols = config.data.symbols
@@ -332,6 +327,10 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         ticks_per_bar = int(bar_interval * 2)  # 2 ticks/sec
         batch_size = max(1, ticks_per_bar)
 
+        # When dashboard is active, pace ticks so bars arrive every 1s
+        # instead of every 50ms — otherwise the session ends too fast to see.
+        tick_delay = 1.0 if dashboard else 0.05
+
         for i in range(0, len(ticks), batch_size):
             if stop_event.is_set():
                 break
@@ -342,11 +341,14 @@ async def run_paper_trading(config: BacktestConfig) -> None:
             # Record bar for health monitor
             health_monitor.record_bar(datetime.now())
 
-            await asyncio.sleep(0.05)  # fast simulation
+            await asyncio.sleep(tick_delay)
 
         # Let engine process remaining events
         await asyncio.sleep(0.5)
         await engine.stop()
+        stop_event.set()
+        if dash is not None:
+            dash.stop()
 
     async def periodic_save() -> None:
         """Periodically save engine state to database."""
@@ -358,7 +360,7 @@ async def run_paper_trading(config: BacktestConfig) -> None:
                 logger.info("Engine state saved to database")
 
     async def monitor_health() -> None:
-        """Periodically check health."""
+        """Periodically check health (skipped when dashboard is active)."""
         while not stop_event.is_set():
             await asyncio.sleep(5)
             report = health_monitor.get_health_report()
@@ -380,16 +382,37 @@ async def run_paper_trading(config: BacktestConfig) -> None:
     print(f"  Storage:  {live_cfg.database.db_url}")
     print("=" * 60 + "\n")
 
+    # Optional dashboard
+    dash: TradingDashboard | None = None
+    if dashboard:
+        dash = TradingDashboard(engine, health_monitor, refresh_rate=1.0)
+
+    # Graceful shutdown — registered after dashboard so we can stop it
+    def handle_signal() -> None:
+        logger.info("Shutdown signal received")
+        stop_event.set()
+        if dash is not None:
+            dash.stop()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, handle_signal)
+
     # Connect broker
     await order_manager._broker.connect()
 
+    tasks = [
+        engine.start(),
+        feed_ticks(),
+        periodic_save(),
+    ]
+    # Dashboard replaces the health log task — it shows health in a panel
+    if dash is not None:
+        tasks.append(dash.start())
+    else:
+        tasks.append(monitor_health())
+
     try:
-        await asyncio.gather(
-            engine.start(),
-            feed_ticks(),
-            periodic_save(),
-            monitor_health(),
-        )
+        await asyncio.gather(*tasks)
     except asyncio.CancelledError:
         pass
     finally:
@@ -440,10 +463,15 @@ def main() -> None:
         default="configs/paper_trading_config.yaml",
         help="Path to config YAML",
     )
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Enable Rich terminal dashboard",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
-    asyncio.run(run_paper_trading(config))
+    asyncio.run(run_paper_trading(config, dashboard=args.dashboard))
 
 
 if __name__ == "__main__":
