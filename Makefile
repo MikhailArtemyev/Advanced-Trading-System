@@ -36,10 +36,10 @@ install-dev:
 
 # Linting
 lint:
-	ruff check src/ tests/
+	ruff check src/ tests/ scripts/
 
 lint-fix:
-	ruff check src/ tests/ --fix
+	ruff check src/ tests/ scripts/ --fix
 
 # Formatting
 format:

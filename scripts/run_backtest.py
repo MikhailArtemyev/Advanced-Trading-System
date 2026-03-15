@@ -15,8 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.backtest.engine import BacktestEngine
 from src.config import BacktestConfig, load_config
-from src.storage.null_storage import NullStorage
-from src.storage.sql_storage import SQLStorage
 from src.data.data_handler import DataHandler, HistoricalCSVDataHandler
 from src.data.yfinance_handler import YFinanceDataHandler
 from src.execution.execution_handler import ExecutionHandler
@@ -33,6 +31,8 @@ from src.risk.position_sizer import (
     VolatilityBasedSizer,
 )
 from src.risk.risk_manager import RiskLimits, RiskManager
+from src.storage.null_storage import NullStorage
+from src.storage.sql_storage import SQLStorage
 from src.strategy.base_strategy import Strategy
 from src.strategy.multi_asset_sma import MultiAssetSMAStrategy
 from src.strategy.sma_crossover import SMACrossoverStrategy
