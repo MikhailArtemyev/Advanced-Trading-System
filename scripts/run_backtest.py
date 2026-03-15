@@ -18,20 +18,6 @@ from src.config import BacktestConfig, load_config
 from src.data.data_handler import DataHandler, HistoricalCSVDataHandler
 from src.data.yfinance_handler import YFinanceDataHandler
 from src.execution.execution_handler import ExecutionHandler
-from src.features import (
-    ATRFeature,
-    BollingerBandFeature,
-    FeaturePipeline,
-    HigherMomentFeature,
-    HurstExponentFeature,
-    MACDFeature,
-    ReturnFeature,
-    RSIFeature,
-    SMAFeature,
-    VolatilityFeature,
-    ZScoreFeature,
-)
-from src.ml import LightGBMSignalModel, MLStrategy, XGBoostSignalModel
 from src.optimization.base_optimizer import PortfolioOptimizer
 from src.optimization.mean_variance import MeanVarianceOptimizer
 from src.optimization.risk_parity import RiskParityOptimizer
@@ -45,8 +31,13 @@ from src.risk.position_sizer import (
     VolatilityBasedSizer,
 )
 from src.risk.risk_manager import RiskLimits, RiskManager
+from src.storage.null_storage import NullStorage
+from src.storage.sql_storage import SQLStorage
 from src.strategy.base_strategy import Strategy
+from src.strategy.mean_reversion import MeanReversionStrategy
+from src.strategy.momentum import MomentumStrategy
 from src.strategy.multi_asset_sma import MultiAssetSMAStrategy
+from src.strategy.pairs_trading import PairsTradingStrategy
 from src.strategy.sma_crossover import SMACrossoverStrategy
 
 
@@ -122,71 +113,6 @@ def build_optimizer(config: BacktestConfig) -> PortfolioOptimizer | None:
         raise ValueError(msg)
 
 
-_FEATURE_BUILDERS = {
-    "sma": lambda cfg: SMAFeature(windows=cfg.get("windows", [5, 10, 20, 50])),
-    "rsi": lambda cfg: RSIFeature(period=cfg.get("period", 14)),
-    "macd": lambda cfg: MACDFeature(),
-    "bollinger": lambda cfg: BollingerBandFeature(window=cfg.get("window", 20)),
-    "atr": lambda cfg: ATRFeature(period=cfg.get("period", 14)),
-    "returns": lambda cfg: ReturnFeature(horizons=cfg.get("horizons", [1, 5, 10, 20])),
-    "zscore": lambda cfg: ZScoreFeature(window=cfg.get("window", 20)),
-    "higher_moments": lambda cfg: HigherMomentFeature(window=cfg.get("window", 20)),
-    "hurst": lambda cfg: HurstExponentFeature(window=cfg.get("window", 100)),
-    "volatility": lambda cfg: VolatilityFeature(
-        windows=cfg.get("windows", [5, 20, 60])
-    ),
-}
-
-
-def build_feature_pipeline(config: BacktestConfig) -> FeaturePipeline:
-    """Build feature pipeline from config.features."""
-    generators = []
-
-    for feat_cfg in config.features.technical:
-        feat_type = feat_cfg.get("type", "")
-        builder = _FEATURE_BUILDERS.get(feat_type)
-        if builder:
-            generators.append(builder(feat_cfg))
-        else:
-            print(f"  Warning: unknown technical feature type '{feat_type}'")
-
-    for feat_cfg in config.features.statistical:
-        feat_type = feat_cfg.get("type", "")
-        builder = _FEATURE_BUILDERS.get(feat_type)
-        if builder:
-            generators.append(builder(feat_cfg))
-        else:
-            print(f"  Warning: unknown statistical feature type '{feat_type}'")
-
-    if not generators:
-        # Default features if none specified
-        generators = [
-            SMAFeature(windows=[5, 10, 20, 50]),
-            RSIFeature(period=14),
-            MACDFeature(),
-            BollingerBandFeature(window=20),
-            ATRFeature(period=14),
-            ReturnFeature(horizons=[1, 5, 10, 20]),
-            ZScoreFeature(window=20),
-            VolatilityFeature(windows=[5, 20, 60]),
-        ]
-
-    return FeaturePipeline(generators)
-
-
-def build_ml_model(config: BacktestConfig) -> XGBoostSignalModel | LightGBMSignalModel:
-    """Build ML model from config.ml."""
-    params = dict(config.ml.parameters)
-
-    if config.ml.model == "xgboost":
-        return XGBoostSignalModel(mode=config.ml.mode, **params)
-    elif config.ml.model == "lightgbm":
-        return LightGBMSignalModel(mode=config.ml.mode, **params)
-    else:
-        msg = f"Unknown ML model: {config.ml.model}"
-        raise ValueError(msg)
-
-
 def build_strategy(
     config: BacktestConfig,
     optimizer: PortfolioOptimizer | None = None,
@@ -194,58 +120,23 @@ def build_strategy(
 ) -> Strategy:
     """Build strategy based on config and optimizer.
 
-    For ml_strategy: builds pipeline, trains model on historical data,
-    then creates MLStrategy.
-
-    For sma_crossover: auto-selects MultiAssetSMAStrategy when multiple
-    symbols AND an optimizer are configured.
+    Auto-selects MultiAssetSMAStrategy when multiple symbols AND an
+    optimizer are configured (for sma_crossover).
     """
     symbols = config.data.symbols
     params = dict(config.strategy.parameters)
+    name = config.strategy.name
 
-    if config.strategy.name == "ml_strategy":
-        if data_handler is None:
-            msg = "ml_strategy requires data_handler for training"
-            raise ValueError(msg)
+    if name == "momentum":
+        return MomentumStrategy(symbols=symbols, parameters=params)
 
-        pipeline = build_feature_pipeline(config)
-        model = build_ml_model(config)
+    if name == "mean_reversion":
+        return MeanReversionStrategy(symbols=symbols, parameters=params)
 
-        # Train on historical data — read directly from handler's internal store
-        print("  Training ML model...")
-        target_cfg = config.features.target
-        horizon = target_cfg.get("horizon", 5)
-        target_type = target_cfg.get("type", "direction")
+    if name == "pairs_trading":
+        return PairsTradingStrategy(symbols=symbols, parameters=params)
 
-        # Access the full historical data for training
-        # (data_handler.data has all bars, not limited by current_index)
-        first_symbol = symbols[0]
-        if hasattr(data_handler, "data") and first_symbol in data_handler.data:
-            train_data = data_handler.data[first_symbol].copy()
-        else:
-            msg = "Cannot access training data from data handler"
-            raise ValueError(msg)
-
-        pipeline_result = pipeline.run(
-            train_data,
-            target_horizon=horizon,
-            target_type=target_type,
-        )
-
-        train_result = model.train(pipeline_result.features, pipeline_result.target)
-        print(
-            f"  Model trained: score={train_result.train_score:.3f}, "
-            f"features={train_result.n_features}, "
-            f"samples={train_result.n_train_samples}"
-        )
-
-        return MLStrategy(
-            symbols=symbols,
-            pipeline=pipeline,
-            model=model,
-            parameters=params,
-        )
-
+    # Default: sma_crossover (with multi-asset variant when optimizer present)
     if len(symbols) > 1 and optimizer is not None:
         params.setdefault(
             "rebalance_frequency", config.optimization.rebalance_frequency
@@ -310,6 +201,13 @@ def main() -> None:
         initial_capital=config.execution.initial_capital,
     )
 
+    # Storage — use SQLite if enabled in config, otherwise NullStorage
+    db_cfg = config.live.database
+    if db_cfg.enabled:
+        storage = SQLStorage(db_url=db_cfg.db_url)
+    else:
+        storage = NullStorage()
+
     # Create and run backtest engine
     engine = BacktestEngine(
         data_handler=data_handler,
@@ -318,9 +216,13 @@ def main() -> None:
         execution_handler=execution_handler,
         performance_tracker=performance_tracker,
         risk_manager=risk_manager,
+        storage=storage,
     )
 
     results = engine.run()
+
+    # Close storage
+    storage.close()
 
     # Print performance report
     performance_tracker.print_report(

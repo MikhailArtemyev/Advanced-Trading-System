@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install install-dev lint format type-check test test-cov clean help run run-ml run-baseline run-vol run-meanvar run-riskparity report run-config demo paper
+.PHONY: install install-dev lint format type-check test test-cov clean help run run-baseline run-vol run-meanvar run-riskparity report run-config demo paper paper-dashboard
 
 # Default target
 help:
@@ -19,7 +19,6 @@ help:
 	@echo "  make run-baseline Run baseline (fixed sizing, no risk)"
 	@echo "  make run-vol      Run volatility sizing + risk management"
 	@echo "  make run-meanvar  Run mean-variance optimized portfolio"
-	@echo "  make run-ml       Run ML strategy backtest (XGBoost)"
 	@echo "  make run-riskparity Run risk parity optimized portfolio"
 	@echo "  make run-config CONFIG=path  Run backtest with a custom config file"
 	@echo "  make report       Run ALL configs and generate full comparison report"
@@ -37,17 +36,17 @@ install-dev:
 
 # Linting
 lint:
-	ruff check src/ tests/
+	ruff check src/ tests/ scripts/
 
 lint-fix:
-	ruff check src/ tests/ --fix
+	ruff check src/ tests/ scripts/ --fix
 
 # Formatting
 format:
-	black src/ tests/
+	black src/ tests/ scripts/
 
 format-check:
-	black --check src/ tests/
+	black --check src/ tests/ scripts/
 
 # Type checking
 type-check:
@@ -99,10 +98,6 @@ run-meanvar: download-data
 run-riskparity: download-data
 	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_riskparity.yaml
 
-# Run ML strategy backtest
-run-ml: download-data
-	$(PYTHON) ./scripts/run_backtest.py --config configs/ml_backtest_config.yaml
-
 # Run with a custom config file: make run-config CONFIG=configs/my_config.yaml
 run-config: download-data
 	@if [ -z "$(CONFIG)" ]; then echo "Usage: make run-config CONFIG=path/to/config.yaml"; exit 1; fi
@@ -111,6 +106,10 @@ run-config: download-data
 # Paper trading session (synthetic ticks, no live data needed)
 paper:
 	$(PYTHON) ./scripts/run_paper_trading.py --config configs/paper_trading_config.yaml
+
+# Paper trading with Rich terminal dashboard
+paper-dashboard:
+	$(PYTHON) ./scripts/run_paper_trading.py --config configs/paper_trading_config.yaml --dashboard
 
 # Full report: run ALL configs, generate report + charts
 report: download-data

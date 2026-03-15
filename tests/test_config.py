@@ -9,12 +9,12 @@ from pydantic import ValidationError
 from src.config import (
     BacktestConfig,
     BrokerConfig,
+    DatabaseConfig,
     DataConfig,
     ExecutionConfig,
     LiveConfig,
     LiveDataConfig,
     OptimizationConfig,
-    PersistenceConfig,
     RiskConfig,
     SizingConfig,
     StrategyConfig,
@@ -482,31 +482,25 @@ class TestBrokerConfig:
         assert config.paper_mode is False
 
 
-class TestPersistenceConfig:
+class TestDatabaseConfig:
     def test_defaults(self):
-        config = PersistenceConfig()
+        config = DatabaseConfig()
         assert config.enabled is True
-        assert config.state_dir == "state/"
+        assert config.db_url == "sqlite:///trading.db"
         assert config.save_interval_seconds == 300
-        assert config.max_snapshots == 10
 
     def test_custom_values(self):
-        config = PersistenceConfig(
+        config = DatabaseConfig(
             enabled=False,
-            state_dir="/tmp/state",
+            db_url="sqlite:///custom.db",
             save_interval_seconds=60,
-            max_snapshots=5,
         )
         assert config.enabled is False
-        assert config.state_dir == "/tmp/state"
+        assert config.db_url == "sqlite:///custom.db"
 
     def test_invalid_save_interval(self):
         with pytest.raises(ValidationError):
-            PersistenceConfig(save_interval_seconds=0)
-
-    def test_invalid_max_snapshots(self):
-        with pytest.raises(ValidationError):
-            PersistenceConfig(max_snapshots=0)
+            DatabaseConfig(save_interval_seconds=0)
 
 
 class TestLiveConfig:
@@ -514,7 +508,7 @@ class TestLiveConfig:
         config = LiveConfig()
         assert config.data.feed_type == "websocket"
         assert config.broker.broker_type == "paper"
-        assert config.persistence.enabled is True
+        assert config.database.enabled is True
 
     def test_nested_override(self):
         config = LiveConfig(

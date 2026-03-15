@@ -41,8 +41,7 @@ live:
   broker:
     broker_type: "paper"
     fill_delay_ms: 100
-  persistence:
+  database:
     enabled: true
-    state_dir: "state/"
+    db_url: "sqlite:///trading.db"
     save_interval_seconds: 300
-    max_snapshots: 10
