@@ -16,6 +16,7 @@ make lint-fix           # Auto-fix lint issues with ruff
 make type-check         # mypy src/ --ignore-missing-imports
 make report             # Run all configs and generate comparison report + charts
 make paper              # Run paper trading session (synthetic data)
+make paper-dashboard    # Run paper trading with Rich terminal dashboard
 make run-config CONFIG=path  # Run with a custom config
 ```
 
@@ -37,7 +38,7 @@ MarketEvent → Strategy.calculate_signals() → SignalEvent
 
 - **`src/events/`** — Event types (Market, Signal, Order, Fill) and the event queue
 - **`src/data/`** — `DataHandler` ABC with CSV and YFinance implementations. `get_latest_bars(symbol, n)` is the primary interface strategies use
-- **`src/strategy/`** — `Strategy` ABC. Implementations: `SMACrossoverStrategy`, `MultiAssetSMAStrategy`. Strategies emit `SignalEvent`s with `SignalType.LONG/SHORT/EXIT` and a `strength` float
+- **`src/strategy/`** — `Strategy` ABC. Implementations: `SMACrossoverStrategy`, `MultiAssetSMAStrategy`, `MomentumStrategy` (cross-sectional ranking), `MeanReversionStrategy` (z-score entry/exit), `PairsTradingStrategy` (OLS hedge ratio, spread z-score). Strategies emit `SignalEvent`s with `SignalType.LONG/SHORT/EXIT` and a `strength` float
 - **`src/portfolio/`** — Manages positions, cash, equity. Calls `PositionSizer` to determine order quantity. Tracks correlation matrix across assets
 - **`src/risk/`** — `RiskManager` (drawdown, daily loss, concentration limits) and `PositionSizer` ABC (fixed fraction, volatility-based, Kelly criterion)
 - **`src/optimization/`** — `PortfolioOptimizer` ABC with mean-variance and risk-parity implementations. Adjusts target weights across assets
@@ -53,16 +54,19 @@ MarketEvent → Strategy.calculate_signals() → SignalEvent
 - **`src/storage/`** — `StorageBackend` ABC with `SQLStorage` (SQLAlchemy-backed, supports SQLite and PostgreSQL) and `NullStorage` (no-op). Persists trades, equity snapshots, orders, engine state, and sessions
 - **`src/alerts/`** — `AlertChannel` ABC with `SlackAlert`, `EmailAlert`, `WebhookAlert`. `AlertManager` routes alerts to channels with level filtering (`INFO`/`WARNING`/`CRITICAL`) and cooldown-based deduplication. Integrates with `HealthMonitor` callbacks
 - **`src/monitoring/`** — `HealthMonitor` tracks bar freshness, event latency, order fill rates, feed status. `HealthStatus`: HEALTHY/DEGRADED/UNHEALTHY. Alert callbacks fire on non-healthy state
+- **`src/dashboard/`** — `TradingDashboard` Rich-based terminal UI for live sessions. Shows equity, positions, trades, health, and engine stats in a 6-panel layout with live refresh. Redirects logging through Rich to avoid display corruption
 
 ### Configuration
 
 All backtest behavior is driven by YAML files in `configs/`. The config has sections: `data`, `execution`, `strategy`, `sizing`, `risk`, `optimization`, `features`, `validation`, `regime`, `tracking`, `live`. The `live` section has sub-sections: `data` (feed config), `broker` (paper/alpaca), `database` (SQLite/PostgreSQL persistence), `alerts` (Slack/email/webhook notifications). All sections have defaults so older configs load unchanged.
 
+Secrets can be set via environment variables (see `.env.example`): `ALPACA_API_KEY`, `ALPACA_API_SECRET`, `DATABASE_URL`, `SLACK_WEBHOOK_URL`, `SMTP_PASSWORD`. YAML values take precedence; env vars are used when YAML fields are empty. `BacktestConfig.validate_for_live()` checks credentials, symbols, and alert channels before starting a live session.
+
 ### Scripts
 
 - **`scripts/run_backtest.py`** — Main entry point. Has builder functions (`build_data_handler`, `build_strategy`, etc.) that wire config to components. Optionally persists results to database when `config.live.database.enabled` is true
 - **`scripts/run_full_report.py`** — Runs all configs, generates `output/strategy_report.txt` + PNG charts
-- **`scripts/run_paper_trading.py`** — Paper trading session. Wires LiveDataHandler + PaperBroker/AlpacaBroker + PaperTradingEngine with SQLStorage persistence, health monitoring, alert notifications, periodic state saves, and reconciliation on shutdown. Run with `make paper`
+- **`scripts/run_paper_trading.py`** — Paper trading session. Wires LiveDataHandler + PaperBroker/AlpacaBroker + PaperTradingEngine with SQLStorage persistence, health monitoring, alert notifications, periodic state saves, and reconciliation on shutdown. Supports `--dashboard` flag for Rich terminal UI. Run with `make paper` or `make paper-dashboard`
 
 ## Code Quality
 
@@ -76,4 +80,4 @@ All backtest behavior is driven by YAML files in `configs/`. The config has sect
 
 Phased development with detailed plans in `PLANNING/Phase-{1,2,3,4,5}-Plan.md` and weekly notes in `PLANNING/NOTES-Phase{N}-Week{S}.md`.
 
-Phase 4 (Paper Trading) is COMPLETE. Phase 5 (Live Broker Integration & Production Readiness) is IN PROGRESS — Weeks 1-4 complete. 1446 tests, all checks green. Key additions: Alpaca broker + data feed, SQLStorage persistence, alerting system.
+Phase 5 (Live Broker Integration & Production Readiness) is COMPLETE — 1548 tests, all checks green. Key packages added: storage (SQLite persistence), alerts (Slack/email/webhook), dashboard (Rich terminal UI), strategy templates (momentum, mean reversion, pairs trading), Alpaca broker + data feed, env var secrets, startup validation.
