@@ -50,7 +50,6 @@ CONFIGS = [
     ("Vol + Risk Mgmt", "configs/backtest_phase2_vol.yaml"),
     ("Mean-Var Optimized", "configs/backtest_phase2_meanvar.yaml"),
     ("Risk Parity Optimized", "configs/backtest_phase2_riskparity.yaml"),
-    ("ML Strategy (XGBoost)", "configs/ml_backtest_config.yaml"),
 ]
 
 OUTPUT_DIR = Path("output")
@@ -252,21 +251,6 @@ def build_report(
             f"({worst_r['total_return_pct']:+.1f}%). "
         )
 
-        # Check if ML strategy exists and note its curve shape
-        ml_results = [
-            (n, r)
-            for n, r in all_results
-            if "ML" in n or "ml" in r["strategy_type"].lower()
-        ]
-        if ml_results:
-            ml_name, ml_r = ml_results[0]
-            ml_vol = ml_r["metrics"].get("volatility_pct", 0)
-            lines.append(
-                f"**{ml_name}** shows a notably smoother equity curve "
-                f"(volatility {ml_vol:.1f}%) compared to rule-based strategies, "
-                f"though this reflects in-sample performance and should not be "
-                f"taken as indicative of live results."
-            )
         lines.append("")
 
     # --- Drawdown chart ---
