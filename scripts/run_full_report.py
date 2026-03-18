@@ -45,9 +45,8 @@ CONFIGS = [
     ("Baseline (Default)", "configs/backtest_config.yaml"),
     ("Baseline (No Risk)", "configs/backtest_baseline.yaml"),
     ("Conservative Risk", "configs/conservative_risk.yaml"),
-    ("Volatility Sizing", "configs/volatility_sizing.yaml"),
     ("Kelly Sizing", "configs/kelly_sizing.yaml"),
-    ("Vol + Risk Mgmt", "configs/backtest_phase2_vol.yaml"),
+    ("Volatility Sizing", "configs/backtest_phase2_vol.yaml"),
     ("Mean-Var Optimized", "configs/backtest_phase2_meanvar.yaml"),
     ("Risk Parity Optimized", "configs/backtest_phase2_riskparity.yaml"),
 ]

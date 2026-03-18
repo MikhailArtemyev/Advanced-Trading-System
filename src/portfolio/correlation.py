@@ -123,14 +123,6 @@ class CorrelationTracker:
 
         return pd.DataFrame(matrix, index=syms, columns=syms)
 
-    def get_matrix(self) -> pd.DataFrame:
-        """Alias for calculate_matrix().
-
-        Returns:
-            Correlation matrix as a pandas DataFrame
-        """
-        return self.calculate_matrix()
-
     @property
     def symbols(self) -> list[str]:
         """Return list of symbols currently being tracked."""

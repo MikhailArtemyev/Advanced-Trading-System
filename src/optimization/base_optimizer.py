@@ -55,3 +55,41 @@ class PortfolioOptimizer(ABC):
         Returns:
             AllocationResult with target weights and portfolio metrics
         """
+
+    def _equal_weight(self, symbols: list[str], reason: str) -> AllocationResult:
+        """Fallback to equal-weight allocation.
+
+        Args:
+            symbols: Assets to allocate across
+            reason: Why the optimizer fell back to equal weight
+
+        Returns:
+            AllocationResult with equal weights
+        """
+        n = len(symbols)
+        w = 1.0 / n if n > 0 else 0.0
+        return AllocationResult(
+            weights=dict.fromkeys(symbols, w),
+            method=f"{self._method_name}_equal_weight",
+            notes=f"equal weight fallback: {reason}",
+        )
+
+    def _single_asset(self, symbol: str) -> AllocationResult:
+        """Allocation for a single asset (100% weight).
+
+        Args:
+            symbol: The single asset
+
+        Returns:
+            AllocationResult with 100% weight on the asset
+        """
+        return AllocationResult(
+            weights={symbol: 1.0},
+            method=self._method_name,
+            notes="single asset",
+        )
+
+    @property
+    def _method_name(self) -> str:
+        """Return the optimizer's method name for AllocationResult."""
+        raise NotImplementedError

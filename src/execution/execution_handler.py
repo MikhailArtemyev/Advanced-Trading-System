@@ -3,9 +3,13 @@
 Handles order execution with configurable slippage and commission modeling.
 """
 
+import logging
+
 from ..data.data_handler import DataHandler
 from ..events.event import Event, FillEvent, OrderEvent, OrderSide, OrderType
 from ..events.queue import EventQueue
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionHandler:
@@ -73,12 +77,12 @@ class ExecutionHandler:
         order: OrderEvent = event
 
         if order.order_type == OrderType.LIMIT:
-            print("Warning: LIMIT orders not supported in MVP, treating as MARKET")
+            logger.warning("LIMIT orders not supported, treating as MARKET")
 
         # Get current price
         bars = data_handler.get_latest_bars(order.symbol, 1)
         if bars.empty:
-            print(f"Warning: No data for {order.symbol}, order rejected")
+            logger.warning("No data for %s, order rejected", order.symbol)
             return
 
         base_price = float(bars["close"].iloc[-1])
@@ -110,10 +114,14 @@ class ExecutionHandler:
         if self.events:
             self.events.put(fill)
 
-        print(
-            f"[{order.timestamp}] FILL: {order.side.value} "
-            f"{order.quantity} {order.symbol} @ {fill_price:.2f} "
-            f"(commission: ${commission:.2f})"
+        logger.info(
+            "[%s] FILL: %s %d %s @ %.2f (commission: $%.2f)",
+            order.timestamp,
+            order.side.value,
+            order.quantity,
+            order.symbol,
+            fill_price,
+            commission,
         )
 
     def _apply_slippage(self, price: float, side: OrderSide) -> float:

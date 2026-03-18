@@ -9,9 +9,7 @@ import pandas as pd
 from scipy import optimize as sco
 
 from .base_optimizer import AllocationResult, PortfolioOptimizer
-
-_MIN_OBSERVATIONS = 30
-_TRADING_DAYS = 252
+from .constants import MIN_OBSERVATIONS, TRADING_DAYS
 
 
 class RiskParityOptimizer(PortfolioOptimizer):
@@ -43,16 +41,16 @@ class RiskParityOptimizer(PortfolioOptimizer):
 
         returns = returns_df[available].dropna()
 
-        if len(returns) < _MIN_OBSERVATIONS:
+        if len(returns) < MIN_OBSERVATIONS:
             return self._equal_weight(
                 available,
-                f"insufficient data ({len(returns)} < {_MIN_OBSERVATIONS})",
+                f"insufficient data ({len(returns)} < {MIN_OBSERVATIONS})",
             )
 
         if len(available) == 1:
             return self._single_asset(available[0])
 
-        cov = returns.cov().values * _TRADING_DAYS
+        cov = returns.cov().values * TRADING_DAYS
         n = len(available)
 
         w0 = np.ones(n) / n
@@ -75,7 +73,7 @@ class RiskParityOptimizer(PortfolioOptimizer):
         weights = np.maximum(weights, 0.0)
         weights /= weights.sum()
 
-        mu = returns.mean().values * _TRADING_DAYS
+        mu = returns.mean().values * TRADING_DAYS
         port_ret = float(weights @ mu)
         port_vol = float(np.sqrt(weights @ cov @ weights))
 
@@ -100,18 +98,6 @@ class RiskParityOptimizer(PortfolioOptimizer):
 
         return float(np.sum((risk_contrib - target_contrib) ** 2))
 
-    def _equal_weight(self, symbols: list[str], reason: str) -> AllocationResult:
-        n = len(symbols)
-        w = 1.0 / n if n > 0 else 0.0
-        return AllocationResult(
-            weights=dict.fromkeys(symbols, w),
-            method="risk_parity_equal_weight",
-            notes=f"equal weight fallback: {reason}",
-        )
-
-    def _single_asset(self, symbol: str) -> AllocationResult:
-        return AllocationResult(
-            weights={symbol: 1.0},
-            method="risk_parity",
-            notes="single asset",
-        )
+    @property
+    def _method_name(self) -> str:
+        return "risk_parity"
