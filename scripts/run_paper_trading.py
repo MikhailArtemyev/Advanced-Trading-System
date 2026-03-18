@@ -169,7 +169,7 @@ def build_components(
             slippage_pct=config.execution.slippage_pct,
             fill_delay_seconds=live_cfg.broker.fill_delay_ms / 1000.0,
         )
-        broker._data_handler = data_handler
+        broker.set_data_handler(data_handler)
 
     # Order manager
     order_manager = OrderManager(broker=broker)
