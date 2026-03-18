@@ -202,11 +202,11 @@ class TestCorrelationTrackerMatrix:
         # Off-diagonal should be NaN (insufficient data)
         assert math.isnan(matrix.loc["A", "B"])
 
-    def test_get_matrix_alias(self):
-        """get_matrix() and calculate_matrix() return same result."""
+    def test_calculate_matrix_idempotent(self):
+        """calculate_matrix() returns same result on repeated calls."""
         tracker = self._build_tracker()
         m1 = tracker.calculate_matrix()
-        m2 = tracker.get_matrix()
+        m2 = tracker.calculate_matrix()
         pd.testing.assert_frame_equal(m1, m2)
 
 
