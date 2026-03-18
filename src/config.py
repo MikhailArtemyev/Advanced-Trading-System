@@ -77,41 +77,6 @@ class OptimizationConfig(BaseModel):
         return v
 
 
-class FeatureConfig(BaseModel):
-    """Configuration for feature engineering pipeline."""
-
-    technical: list[dict[str, Any]] = Field(default_factory=list)
-    statistical: list[dict[str, Any]] = Field(default_factory=list)
-    target: dict[str, Any] = Field(
-        default_factory=lambda: {"horizon": 5, "type": "direction"}
-    )
-
-
-class ValidationConfig(BaseModel):
-    """Configuration for CPCV validation."""
-
-    method: str = "cpcv"
-    n_splits: int = Field(default=6, ge=3)
-    n_test_splits: int = Field(default=2, ge=1)
-    purge_window: int = Field(default=5, ge=0)
-    embargo_pct: float = Field(default=0.01, ge=0.0, le=1.0)
-
-
-class RegimeConfig(BaseModel):
-    """Configuration for HMM regime detection."""
-
-    enabled: bool = False
-    n_regimes: int = Field(default=3, ge=2)
-    vol_window: int = Field(default=20, ge=2)
-
-
-class TrackingConfig(BaseModel):
-    """Configuration for MLflow experiment tracking."""
-
-    enabled: bool = False
-    experiment_name: str = "trading_system"
-
-
 class LiveDataConfig(BaseModel):
     """Configuration for live data feeds."""
 
@@ -226,10 +191,6 @@ class BacktestConfig(BaseModel):
     sizing: SizingConfig = Field(default_factory=SizingConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     optimization: OptimizationConfig = Field(default_factory=OptimizationConfig)
-    features: FeatureConfig = Field(default_factory=FeatureConfig)
-    validation: ValidationConfig = Field(default_factory=ValidationConfig)
-    regime: RegimeConfig = Field(default_factory=RegimeConfig)
-    tracking: TrackingConfig = Field(default_factory=TrackingConfig)
     live: LiveConfig = Field(default_factory=LiveConfig)
 
     def validate_for_live(self) -> list[str]:

@@ -463,16 +463,11 @@ class TestIntegration:
         assert result.n_trials == 50
         assert 0.0 <= result.p_value <= 1.0
 
-    def test_dsr_with_cpcv_n_paths(self) -> None:
-        """Use CPCV's n_paths as the n_trials for DSR."""
-        from src.validation.cpcv import CPCVValidator
-
-        validator = CPCVValidator(n_splits=6, n_test_splits=2)
-        n_paths = validator.n_paths  # 15
-
+    def test_dsr_with_multiple_trials(self) -> None:
+        """DSR with a specific number of trials."""
         result = deflated_sharpe_ratio(
             observed_sr=1.5,
-            n_trials=n_paths,
+            n_trials=15,
             n_observations=500,
         )
 
