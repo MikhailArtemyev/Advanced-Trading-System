@@ -173,6 +173,10 @@ def main() -> None:
     args = parser.parse_args()
 
     # Load configuration
+    if not Path(args.config).exists():
+        print(f"Error: config file not found: {args.config}")
+        sys.exit(1)
+
     print(f"Loading config from {args.config}")
     config = load_config(args.config)
 

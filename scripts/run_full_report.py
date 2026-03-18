@@ -17,6 +17,7 @@ Usage:
 
 import argparse
 import io
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -615,8 +616,8 @@ def main() -> None:
             sharpe = result["metrics"].get("sharpe_ratio", 0)
             ret = result["total_return_pct"]
             print(f"Return: {ret:+6.1f}%  Sharpe: {sharpe:.3f}")
-        except Exception as e:
-            print(f"FAILED: {e}")
+        except Exception:
+            logging.exception("Config %s failed", name)
     print()
 
     if not all_results:
