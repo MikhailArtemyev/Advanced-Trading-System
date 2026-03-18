@@ -47,6 +47,7 @@ class PaperBroker(BrokerAdapter):
 
         self._fill_callbacks: list[Callable[[BrokerFill], None]] = []
         self._data_handler: DataHandler | None = None
+        self._manual_prices: dict[str, float] = {}
 
     @property
     def connected(self) -> bool:
@@ -68,12 +69,7 @@ class PaperBroker(BrokerAdapter):
         self._data_handler = data_handler
 
     def set_price(self, symbol: str, price: float) -> None:
-        """Manually set a price for a symbol (useful for testing).
-
-        Creates a minimal data handler stub that returns this price.
-        """
-        if not hasattr(self, "_manual_prices"):
-            self._manual_prices: dict[str, float] = {}
+        """Manually set a price for a symbol (useful for testing)."""
         self._manual_prices[symbol] = price
 
     def add_fill_callback(self, callback: Callable[[BrokerFill], None]) -> None:
@@ -253,7 +249,7 @@ class PaperBroker(BrokerAdapter):
     def _get_current_price(self, symbol: str) -> float | None:
         """Get the latest price from the data handler or manual prices."""
         # Check manual prices first (for testing)
-        if hasattr(self, "_manual_prices") and symbol in self._manual_prices:
+        if symbol in self._manual_prices:
             return self._manual_prices[symbol]
 
         if self._data_handler is None:
