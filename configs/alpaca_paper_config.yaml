@@ -1,5 +1,5 @@
-# Paper Trading Configuration
-# Uses SMA crossover strategy with paper broker
+# Alpaca Paper Trading Configuration
+# Uses SMA crossover strategy with Alpaca paper broker
 
 data:
   symbols: ["AAPL", "MSFT", "GOOGL"]
@@ -39,8 +39,8 @@ live:
     max_history: 5000
     reconnect_attempts: 10
   broker:
-    broker_type: "paper"
-    fill_delay_ms: 100
+    broker_type: "alpaca"
+    paper_mode: true
   database:
     enabled: true
     db_url: "sqlite:///trading.db"
