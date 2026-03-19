@@ -5,8 +5,6 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 # Ensure scripts/ is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -394,9 +392,7 @@ class TestCalculateTurnover:
 class TestPrintReportExtended:
     """Tests for print_report with extended metrics."""
 
-    def test_print_report_with_portfolio_history(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_print_report_with_portfolio_history(self, caplog) -> None:
         tracker = PerformanceTracker(initial_capital=100000.0)
         for i in range(10):
             tracker.update(datetime(2023, 1, i + 1), 100000.0 + i * 500)
@@ -413,38 +409,36 @@ class TestPrintReportExtended:
         ]
         trades = [MagicMock(side="SELL", pnl=500, price=150.0, quantity=10)]
 
-        tracker.print_report(trades=trades, portfolio_equity_history=history)
+        with caplog.at_level("INFO", logger="src.performance.metrics"):
+            tracker.print_report(trades=trades, portfolio_equity_history=history)
 
-        captured = capsys.readouterr()
-        assert "Avg Positions:" in captured.out
-        assert "Max Positions:" in captured.out
-        assert "Avg Exposure:" in captured.out
-        assert "Turnover" in captured.out
+        assert "Avg Positions:" in caplog.text
+        assert "Max Positions:" in caplog.text
+        assert "Avg Exposure:" in caplog.text
+        assert "Turnover" in caplog.text
 
-    def test_print_report_without_history_no_extended(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_print_report_without_history_no_extended(self, caplog) -> None:
         tracker = PerformanceTracker(initial_capital=100000.0)
         for i in range(10):
             tracker.update(datetime(2023, 1, i + 1), 100000.0 + i * 500)
 
         trades = [MagicMock(side="SELL", pnl=500, price=150.0, quantity=10)]
 
-        tracker.print_report(trades=trades)
+        with caplog.at_level("INFO", logger="src.performance.metrics"):
+            tracker.print_report(trades=trades)
 
-        captured = capsys.readouterr()
-        assert "BACKTEST PERFORMANCE REPORT" in captured.out
-        assert "Avg Positions:" not in captured.out
-        assert "Total Trades:" in captured.out
+        assert "BACKTEST PERFORMANCE REPORT" in caplog.text
+        assert "Avg Positions:" not in caplog.text
+        assert "Total Trades:" in caplog.text
 
-    def test_backward_compatible_call(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_backward_compatible_call(self, caplog) -> None:
         tracker = PerformanceTracker(initial_capital=100000.0)
         tracker.update(datetime(2023, 1, 1), 100000.0)
         tracker.update(datetime(2023, 1, 2), 105000.0)
 
         trades = [MagicMock(side="SELL", pnl=500)]
-        tracker.print_report(trades)
+        with caplog.at_level("INFO", logger="src.performance.metrics"):
+            tracker.print_report(trades)
 
-        captured = capsys.readouterr()
-        assert "BACKTEST PERFORMANCE REPORT" in captured.out
-        assert "Total Trades:" in captured.out
+        assert "BACKTEST PERFORMANCE REPORT" in caplog.text
+        assert "Total Trades:" in caplog.text

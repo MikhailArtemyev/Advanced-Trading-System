@@ -9,9 +9,7 @@ import pandas as pd
 from scipy import optimize as sco
 
 from .base_optimizer import AllocationResult, PortfolioOptimizer
-
-_MIN_OBSERVATIONS = 30
-_TRADING_DAYS = 252
+from .constants import MIN_OBSERVATIONS, TRADING_DAYS
 
 
 class MeanVarianceOptimizer(PortfolioOptimizer):
@@ -52,22 +50,22 @@ class MeanVarianceOptimizer(PortfolioOptimizer):
 
         returns = returns_df[available].dropna()
 
-        if len(returns) < _MIN_OBSERVATIONS:
+        if len(returns) < MIN_OBSERVATIONS:
             return self._equal_weight(
                 available,
-                f"insufficient data ({len(returns)} < {_MIN_OBSERVATIONS})",
+                f"insufficient data ({len(returns)} < {MIN_OBSERVATIONS})",
             )
 
         if len(available) == 1:
             return self._single_asset(available[0])
 
-        mu = returns.mean().values * _TRADING_DAYS
+        mu = returns.mean().values * TRADING_DAYS
 
         if self.shrinkage:
             daily_cov = returns.cov().values
-            cov = _ledoit_wolf_shrinkage(returns.values, daily_cov) * _TRADING_DAYS
+            cov = _ledoit_wolf_shrinkage(returns.values, daily_cov) * TRADING_DAYS
         else:
-            cov = returns.cov().values * _TRADING_DAYS
+            cov = returns.cov().values * TRADING_DAYS
 
         n = len(available)
         w0 = np.ones(n) / n
@@ -122,21 +120,9 @@ class MeanVarianceOptimizer(PortfolioOptimizer):
     def _portfolio_vol(self, w: np.ndarray, cov: np.ndarray) -> float:
         return float(np.sqrt(w @ cov @ w))
 
-    def _equal_weight(self, symbols: list[str], reason: str) -> AllocationResult:
-        n = len(symbols)
-        w = 1.0 / n if n > 0 else 0.0
-        return AllocationResult(
-            weights=dict.fromkeys(symbols, w),
-            method="mean_variance_equal_weight",
-            notes=f"equal weight fallback: {reason}",
-        )
-
-    def _single_asset(self, symbol: str) -> AllocationResult:
-        return AllocationResult(
-            weights={symbol: 1.0},
-            method=f"mean_variance_{self.target}",
-            notes="single asset",
-        )
+    @property
+    def _method_name(self) -> str:
+        return f"mean_variance_{self.target}"
 
 
 def _ledoit_wolf_shrinkage(returns: np.ndarray, sample_cov: np.ndarray) -> np.ndarray:

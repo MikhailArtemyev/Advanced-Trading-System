@@ -5,6 +5,7 @@ Delegates bar iteration to HistoricalCSVDataHandler to reuse existing
 look-ahead bias prevention logic.
 """
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +13,8 @@ import pandas as pd
 import yfinance as yf
 
 from .data_handler import DataHandler, HistoricalCSVDataHandler
+
+logger = logging.getLogger(__name__)
 
 
 class YFinanceDataHandler(DataHandler):
@@ -78,6 +81,7 @@ class YFinanceDataHandler(DataHandler):
                 and cached_end >= requested_end
             )
         except Exception:
+            logger.warning("Failed to validate cache for %s, will re-download", symbol)
             return False
 
     def _download_symbol(self, symbol: str) -> None:

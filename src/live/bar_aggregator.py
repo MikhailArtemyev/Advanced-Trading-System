@@ -75,12 +75,12 @@ class BarAggregator:
         return self._interval
 
     @property
-    def on_bar(self) -> Callable[[Bar], None] | None:
+    def bar_callback(self) -> Callable[[Bar], None] | None:
         """The current bar-completion callback."""
         return self._on_bar
 
-    @on_bar.setter
-    def on_bar(self, callback: Callable[[Bar], None] | None) -> None:
+    @bar_callback.setter
+    def bar_callback(self, callback: Callable[[Bar], None] | None) -> None:
         """Set the bar-completion callback."""
         self._on_bar = callback
 

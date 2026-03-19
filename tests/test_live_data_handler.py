@@ -49,7 +49,7 @@ class TestLiveDataHandlerInit:
 
     def test_registers_on_bar_callback(self):
         handler, agg = _make_handler()
-        assert agg.on_bar is not None
+        assert agg.bar_callback is not None
 
     def test_custom_max_history(self):
         agg = BarAggregator(interval=timedelta(minutes=1))

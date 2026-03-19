@@ -11,6 +11,7 @@ from typing import Any
 from ..data.data_handler import DataHandler
 from ..events.event import SignalEvent, SignalType
 from .base_strategy import Strategy
+from .crossover import detect_sma_crossover
 
 
 class SMACrossoverStrategy(Strategy):
@@ -104,50 +105,27 @@ class SMACrossoverStrategy(Strategy):
         Returns:
             SignalEvent if crossover detected, None otherwise
         """
-        # Get enough bars to calculate long SMA
         bars = data_handler.get_latest_bars(symbol, self.long_window + 1)
 
-        # Not enough data yet
         if len(bars) < self.long_window:
             return None
 
-        # Calculate SMAs
-        close_prices = bars["close"]
-        short_sma = close_prices.tail(self.short_window).mean()
-        long_sma = close_prices.tail(self.long_window).mean()
-
-        # Get previous SMAs (if available)
-        prev_short = self.prev_short_sma.get(symbol)
-        prev_long = self.prev_long_sma.get(symbol)
-
-        # Update stored values
+        crossover, short_sma, long_sma = detect_sma_crossover(
+            bars["close"],
+            self.short_window,
+            self.long_window,
+            self.prev_short_sma.get(symbol),
+            self.prev_long_sma.get(symbol),
+        )
         self.prev_short_sma[symbol] = short_sma
         self.prev_long_sma[symbol] = long_sma
 
-        # Need previous values to detect crossover
-        if prev_short is None or prev_long is None:
-            return None
+        if crossover == "bullish" and self.current_positions.get(symbol, 0) <= 0:
+            return self._create_signal(timestamp, symbol, SignalType.LONG, strength=1.0)
+        elif crossover == "bearish" and self.current_positions.get(symbol, 0) > 0:
+            return self._create_signal(timestamp, symbol, SignalType.EXIT, strength=1.0)
 
-        # Detect crossover
-        signal = None
-
-        # Bullish crossover: short crosses above long
-        if prev_short <= prev_long and short_sma > long_sma:
-            # Only signal if not already long
-            if self.current_positions.get(symbol, 0) <= 0:
-                signal = self._create_signal(
-                    timestamp, symbol, SignalType.LONG, strength=1.0
-                )
-
-        # Bearish crossover: short crosses below long
-        elif prev_short >= prev_long and short_sma < long_sma:
-            # Only signal if currently long
-            if self.current_positions.get(symbol, 0) > 0:
-                signal = self._create_signal(
-                    timestamp, symbol, SignalType.EXIT, strength=1.0
-                )
-
-        return signal
+        return None
 
     def get_sma_values(self, symbol: str) -> tuple[float | None, float | None]:
         """Get current SMA values for a symbol.

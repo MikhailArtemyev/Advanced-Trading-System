@@ -3,11 +3,14 @@
 Provides plotting functions for equity curves, drawdowns, and returns distributions.
 """
 
+import logging
 from pathlib import Path
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def plot_equity_curve(
@@ -288,7 +291,7 @@ def create_full_report(
     # Create output directory
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    print(f"Generating visual reports in {output_dir}/...")
+    logger.info("Generating visual reports in %s/...", output_dir)
 
     # Generate all plots
     plot_equity_curve(
@@ -321,4 +324,4 @@ def create_full_report(
         )
         plt.close()
 
-    print(f"Report saved to {output_dir}/")
+    logger.info("Report saved to %s/", output_dir)

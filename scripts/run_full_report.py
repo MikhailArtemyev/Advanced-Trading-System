@@ -17,6 +17,7 @@ Usage:
 
 import argparse
 import io
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -39,20 +40,40 @@ from src.performance.metrics import PerformanceTracker
 from src.portfolio.portfolio import Portfolio
 from src.validation.deflated_sharpe import deflated_sharpe_ratio
 
-# All configs to compare
+# Default configs to compare (used when no CLI args given)
 # Each entry: (display_name, config_path)
-CONFIGS = [
+_DEFAULT_CONFIGS = [
     ("Baseline (Default)", "configs/backtest_config.yaml"),
     ("Baseline (No Risk)", "configs/backtest_baseline.yaml"),
     ("Conservative Risk", "configs/conservative_risk.yaml"),
-    ("Volatility Sizing", "configs/volatility_sizing.yaml"),
     ("Kelly Sizing", "configs/kelly_sizing.yaml"),
-    ("Vol + Risk Mgmt", "configs/backtest_phase2_vol.yaml"),
+    ("Volatility Sizing", "configs/backtest_phase2_vol.yaml"),
     ("Mean-Var Optimized", "configs/backtest_phase2_meanvar.yaml"),
     ("Risk Parity Optimized", "configs/backtest_phase2_riskparity.yaml"),
 ]
 
-OUTPUT_DIR = Path("output")
+
+def _discover_configs(
+    patterns: list[str] | None = None,
+) -> list[tuple[str, str]]:
+    """Build the config list from CLI paths or defaults.
+
+    Args:
+        patterns: Optional list of config file paths from CLI.
+            If provided, each path becomes an entry with its stem as the name.
+            If None, returns _DEFAULT_CONFIGS.
+    """
+    if not patterns:
+        return list(_DEFAULT_CONFIGS)
+
+    configs: list[tuple[str, str]] = []
+    for p in patterns:
+        name = Path(p).stem.replace("_", " ").title()
+        configs.append((name, p))
+    return configs
+
+
+_DEFAULT_OUTPUT_DIR = Path("output")
 
 
 def run_single_config(config_path: str) -> dict[str, Any]:
@@ -511,7 +532,10 @@ def build_report(
     return "\n".join(lines)
 
 
-def generate_plots(all_results: list[tuple[str, dict[str, Any]]]) -> list[str]:
+def generate_plots(
+    all_results: list[tuple[str, dict[str, Any]]],
+    output_dir: Path = _DEFAULT_OUTPUT_DIR,
+) -> list[str]:
     """Generate comparison charts. Returns list of saved file paths."""
     saved: list[str] = []
 
@@ -521,7 +545,7 @@ def generate_plots(all_results: list[tuple[str, dict[str, Any]]]) -> list[str]:
         print("matplotlib not available — skipping plots")
         return saved
 
-    OUTPUT_DIR.mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True)
 
     # --- Equity curve comparison ---
     fig, ax = plt.subplots(figsize=(14, 7))
@@ -538,7 +562,7 @@ def generate_plots(all_results: list[tuple[str, dict[str, Any]]]) -> list[str]:
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"${x:,.0f}"))
     plt.tight_layout()
 
-    path = str(OUTPUT_DIR / "equity_comparison.png")
+    path = str(output_dir / "equity_comparison.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
     saved.append(path)
@@ -560,7 +584,7 @@ def generate_plots(all_results: list[tuple[str, dict[str, Any]]]) -> list[str]:
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
 
-    path = str(OUTPUT_DIR / "drawdown_comparison.png")
+    path = str(output_dir / "drawdown_comparison.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
     saved.append(path)
@@ -586,7 +610,7 @@ def generate_plots(all_results: list[tuple[str, dict[str, Any]]]) -> list[str]:
         )
 
     plt.tight_layout()
-    path = str(OUTPUT_DIR / "sharpe_comparison.png")
+    path = str(output_dir / "sharpe_comparison.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
     saved.append(path)
@@ -599,6 +623,14 @@ def main() -> None:
         description="Run all configs and generate comparison report"
     )
     parser.add_argument("--no-plots", action="store_true", help="Skip chart generation")
+    parser.add_argument(
+        "--output", default="output", help="Output directory for report and charts"
+    )
+    parser.add_argument(
+        "configs",
+        nargs="*",
+        help="Config files to compare (default: built-in list)",
+    )
     args = parser.parse_args()
 
     print("=" * 70)
@@ -607,8 +639,9 @@ def main() -> None:
     print()
 
     all_results: list[tuple[str, dict[str, Any]]] = []
+    configs = _discover_configs(args.configs or None)
 
-    for name, config_path in CONFIGS:
+    for name, config_path in configs:
         print(f"  Running: {name:<35} ", end="", flush=True)
         try:
             result = run_single_config(config_path)
@@ -616,8 +649,8 @@ def main() -> None:
             sharpe = result["metrics"].get("sharpe_ratio", 0)
             ret = result["total_return_pct"]
             print(f"Return: {ret:+6.1f}%  Sharpe: {sharpe:.3f}")
-        except Exception as e:
-            print(f"FAILED: {e}")
+        except Exception:
+            logging.exception("Config %s failed", name)
     print()
 
     if not all_results:
@@ -625,17 +658,18 @@ def main() -> None:
         return
 
     # Generate plots first so we can embed them in the report
+    out = Path(args.output)
     chart_paths: list[str] = []
     if not args.no_plots:
-        chart_paths = generate_plots(all_results)
+        chart_paths = generate_plots(all_results, output_dir=out)
         for p in chart_paths:
             print(f"Chart saved to:  {p}")
 
     # Build and save report
     report = build_report(all_results, chart_paths)
 
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    report_path = OUTPUT_DIR / "strategy_report.md"
+    out.mkdir(exist_ok=True)
+    report_path = out / "strategy_report.md"
     report_path.write_text(report)
 
     print(f"Report saved to: {report_path}")
