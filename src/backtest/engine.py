@@ -30,6 +30,8 @@ from ..storage.backend import StorageBackend
 
 logger = logging.getLogger(__name__)
 
+_LOG_PROGRESS_INTERVAL = 500
+
 if TYPE_CHECKING:
     import pandas as pd
 
@@ -215,8 +217,7 @@ class BacktestEngine:
             if self.performance_tracker:
                 self.performance_tracker.update(timestamp, self.portfolio.get_equity())
 
-            # Progress update every 500 bars
-            if self.bar_count % 500 == 0:
+            if self.bar_count % _LOG_PROGRESS_INTERVAL == 0:
                 logger.info("Processed %d bars...", self.bar_count)
 
         # Finalize
