@@ -191,10 +191,10 @@ class TestLoadConfig:
     def test_load_actual_config_file(self):
         """Test loading the actual config file in configs/."""
         config_path = Path(__file__).parent.parent / "configs" / "backtest_config.yaml"
-        if config_path.exists():
-            config = load_config(str(config_path))
-            assert config.data.symbols == ["AAPL", "MSFT", "GOOGL"]
-            assert config.strategy.name == "sma_crossover"
+        assert config_path.exists(), "backtest_config.yaml must exist"
+        config = load_config(str(config_path))
+        assert config.data.symbols == ["AAPL", "MSFT", "GOOGL"]
+        assert config.strategy.name == "sma_crossover"
 
 
 class TestSizingConfig:

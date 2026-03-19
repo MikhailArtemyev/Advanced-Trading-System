@@ -196,7 +196,7 @@ class TestExecuteOrder:
         assert fill.commission == 100.0
 
     def test_limit_order_treated_as_market(
-        self, handler_with_queue, mock_data_handler, capsys
+        self, handler_with_queue, mock_data_handler, caplog
     ):
         """Test that LIMIT orders are treated as MARKET with warning."""
         handler, events = handler_with_queue
@@ -210,13 +210,13 @@ class TestExecuteOrder:
             limit_price=95.0,
         )
 
-        handler.execute_order(order, mock_data_handler)
+        with caplog.at_level("WARNING"):
+            handler.execute_order(order, mock_data_handler)
 
-        captured = capsys.readouterr()
-        assert "LIMIT orders not supported" in captured.out
+        assert "LIMIT orders not supported" in caplog.text
         assert not events.empty()  # Order still executed
 
-    def test_no_data_rejects_order(self, handler_with_queue, capsys):
+    def test_no_data_rejects_order(self, handler_with_queue, caplog):
         """Test that order is rejected when no data available."""
         handler, events = handler_with_queue
 
@@ -231,10 +231,10 @@ class TestExecuteOrder:
             quantity=100,
         )
 
-        handler.execute_order(order, mock)
+        with caplog.at_level("WARNING"):
+            handler.execute_order(order, mock)
 
-        captured = capsys.readouterr()
-        assert "No data for AAPL" in captured.out
+        assert "No data for AAPL" in caplog.text
         assert events.empty()  # No fill emitted
 
     def test_orders_processed_incremented(self, handler_with_queue, mock_data_handler):

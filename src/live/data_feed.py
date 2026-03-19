@@ -5,6 +5,7 @@ Data feeds emit raw ticks/quotes that the BarAggregator converts to OHLCV bars.
 """
 
 import asyncio
+import json
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -12,6 +13,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
 from typing import Any
+
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +72,11 @@ class LiveDataFeed(ABC):
         """Set of currently subscribed symbols (copy)."""
         return self._symbols.copy()
 
-    def add_listener(self, callback: Callable[[Tick], None]) -> None:
+    def add_tick_callback(self, callback: Callable[[Tick], None]) -> None:
         """Register a callback invoked on each tick."""
         self._listeners.append(callback)
 
-    def remove_listener(self, callback: Callable[[Tick], None]) -> None:
+    def remove_tick_callback(self, callback: Callable[[Tick], None]) -> None:
         """Unregister a tick callback."""
         self._listeners.remove(callback)
 
@@ -141,8 +144,6 @@ class WebSocketDataFeed(LiveDataFeed):
 
     async def connect(self) -> None:
         """Connect to the WebSocket server and start listening."""
-        import aiohttp
-
         self._should_run = True
         self._status = FeedStatus.CONNECTING
         self._session = aiohttp.ClientSession()
@@ -179,8 +180,6 @@ class WebSocketDataFeed(LiveDataFeed):
 
         Sends a JSON subscribe message.
         """
-        import json
-
         self._symbols.update(symbols)
         if self._ws and not self._ws.closed:
             msg = json.dumps({"action": "subscribe", "symbols": symbols})
@@ -189,8 +188,6 @@ class WebSocketDataFeed(LiveDataFeed):
 
     async def unsubscribe(self, symbols: list[str]) -> None:
         """Unsubscribe from symbols via WebSocket."""
-        import json
-
         self._symbols -= set(symbols)
         if self._ws and not self._ws.closed:
             msg = json.dumps({"action": "unsubscribe", "symbols": symbols})
@@ -199,8 +196,6 @@ class WebSocketDataFeed(LiveDataFeed):
 
     async def _listen_loop(self) -> None:
         """Read messages from WebSocket and dispatch ticks."""
-        import aiohttp
-
         while self._should_run:
             try:
                 if self._ws is None or self._ws.closed:
@@ -267,8 +262,6 @@ class WebSocketDataFeed(LiveDataFeed):
             if self._ws and not self._ws.closed:
                 await self._ws.close()
             if self._session is None or self._session.closed:
-                import aiohttp
-
                 self._session = aiohttp.ClientSession()
             self._ws = await self._session.ws_connect(self._url)
 

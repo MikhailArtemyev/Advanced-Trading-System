@@ -11,6 +11,7 @@ The BacktestEngine orchestrates the event-driven simulation:
 Loop continues until data is exhausted.
 """
 
+import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -26,6 +27,10 @@ from ..events.event import (
 from ..events.queue import EventQueue
 from ..risk.risk_manager import RiskManager
 from ..storage.backend import StorageBackend
+
+logger = logging.getLogger(__name__)
+
+_LOG_PROGRESS_INTERVAL = 500
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -182,7 +187,7 @@ class BacktestEngine:
             - metrics: Performance metrics (if tracker provided)
             - equity_curve: Equity over time (if tracker provided)
         """
-        print("Starting backtest...")
+        logger.info("Starting backtest...")
         start_time = datetime.now()
 
         # Main loop - iterate through each bar
@@ -212,17 +217,18 @@ class BacktestEngine:
             if self.performance_tracker:
                 self.performance_tracker.update(timestamp, self.portfolio.get_equity())
 
-            # Progress update every 500 bars
-            if self.bar_count % 500 == 0:
-                print(f"Processed {self.bar_count} bars...")
+            if self.bar_count % _LOG_PROGRESS_INTERVAL == 0:
+                logger.info("Processed %d bars...", self.bar_count)
 
         # Finalize
         duration = (datetime.now() - start_time).total_seconds()
 
-        print("\nBacktest complete:")
-        print(f"  Bars processed: {self.bar_count}")
-        print(f"  Events processed: {self.event_count}")
-        print(f"  Duration: {duration:.2f} seconds")
+        logger.info(
+            "Backtest complete: %d bars, %d events, %.2fs",
+            self.bar_count,
+            self.event_count,
+            duration,
+        )
 
         # Persist results to storage if configured
         if self.storage is not None:

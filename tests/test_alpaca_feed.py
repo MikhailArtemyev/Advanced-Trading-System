@@ -282,7 +282,7 @@ class TestHandleMessage:
     def test_trade_message_emits_tick(self):
         feed = _make_feed()
         ticks: list[Tick] = []
-        feed.add_listener(ticks.append)
+        feed.add_tick_callback(ticks.append)
 
         trade_msg = json.dumps(
             [
@@ -305,7 +305,7 @@ class TestHandleMessage:
     def test_quote_message_emits_tick(self):
         feed = _make_feed()
         ticks: list[Tick] = []
-        feed.add_listener(ticks.append)
+        feed.add_tick_callback(ticks.append)
 
         quote_msg = json.dumps(
             [
@@ -329,7 +329,7 @@ class TestHandleMessage:
     def test_bar_message_emits_tick(self):
         feed = _make_feed()
         ticks: list[Tick] = []
-        feed.add_listener(ticks.append)
+        feed.add_tick_callback(ticks.append)
 
         bar_msg = json.dumps(
             [
@@ -355,7 +355,7 @@ class TestHandleMessage:
     def test_multiple_messages_in_array(self):
         feed = _make_feed()
         ticks: list[Tick] = []
-        feed.add_listener(ticks.append)
+        feed.add_tick_callback(ticks.append)
 
         multi_msg = json.dumps(
             [
@@ -372,7 +372,7 @@ class TestHandleMessage:
     def test_control_messages_ignored(self):
         feed = _make_feed()
         ticks: list[Tick] = []
-        feed.add_listener(ticks.append)
+        feed.add_tick_callback(ticks.append)
 
         control_msg = json.dumps([{"T": "success", "msg": "authenticated"}])
         feed._handle_message(control_msg)
@@ -382,7 +382,7 @@ class TestHandleMessage:
     def test_invalid_json_handled(self):
         feed = _make_feed()
         ticks: list[Tick] = []
-        feed.add_listener(ticks.append)
+        feed.add_tick_callback(ticks.append)
 
         feed._handle_message("not json at all")
         assert len(ticks) == 0
@@ -390,7 +390,7 @@ class TestHandleMessage:
     def test_missing_fields_skipped(self):
         feed = _make_feed()
         ticks: list[Tick] = []
-        feed.add_listener(ticks.append)
+        feed.add_tick_callback(ticks.append)
 
         # Trade missing price
         msg = json.dumps([{"T": "t", "S": "AAPL"}])

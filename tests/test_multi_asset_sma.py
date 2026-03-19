@@ -21,6 +21,10 @@ class MockOptimizer(PortfolioOptimizer):
     def __init__(self, weights: dict[str, float]) -> None:
         self._weights = weights
 
+    @property
+    def _method_name(self) -> str:
+        return "mock"
+
     def optimize(
         self,
         symbols: list[str],
@@ -35,6 +39,10 @@ class CountingOptimizer(PortfolioOptimizer):
 
     def __init__(self) -> None:
         self.call_count = 0
+
+    @property
+    def _method_name(self) -> str:
+        return "counting"
 
     def optimize(
         self,

@@ -279,33 +279,33 @@ class TestMetricEdgeCases:
 
 
 class TestPrintReport:
-    def test_report_with_trades_and_history(self, capsys):
+    def test_report_with_trades_and_history(self, caplog):
         tracker = _make_tracker(days=50)
         trades = [_make_trade(pnl=100), _make_trade(pnl=-30)]
         history = _make_portfolio_history(50)
-        tracker.print_report(trades=trades, portfolio_equity_history=history)
-        output = capsys.readouterr().out
-        assert "BACKTEST PERFORMANCE REPORT" in output
-        assert "Turnover" in output
-        assert "Avg Positions" in output
+        with caplog.at_level("INFO", logger="src.performance.metrics"):
+            tracker.print_report(trades=trades, portfolio_equity_history=history)
+        assert "BACKTEST PERFORMANCE REPORT" in caplog.text
+        assert "Turnover" in caplog.text
+        assert "Avg Positions" in caplog.text
 
-    def test_report_trades_only(self, capsys):
+    def test_report_trades_only(self, caplog):
         tracker = _make_tracker(days=50)
         trades = [_make_trade(pnl=100)]
-        tracker.print_report(trades=trades)
-        output = capsys.readouterr().out
-        assert "BACKTEST PERFORMANCE REPORT" in output
-        assert "Win Rate" in output
+        with caplog.at_level("INFO", logger="src.performance.metrics"):
+            tracker.print_report(trades=trades)
+        assert "BACKTEST PERFORMANCE REPORT" in caplog.text
+        assert "Win Rate" in caplog.text
 
-    def test_report_insufficient_data(self, capsys):
+    def test_report_insufficient_data(self, caplog):
         tracker = PerformanceTracker(initial_capital=100_000.0)
         tracker.update(datetime(2020, 1, 1), 100_000.0)
-        tracker.print_report()
-        output = capsys.readouterr().out
-        assert "Cannot generate report" in output
+        with caplog.at_level("WARNING", logger="src.performance.metrics"):
+            tracker.print_report()
+        assert "Cannot generate report" in caplog.text
 
-    def test_report_no_trades(self, capsys):
+    def test_report_no_trades(self, caplog):
         tracker = _make_tracker(days=50)
-        tracker.print_report()
-        output = capsys.readouterr().out
-        assert "BACKTEST PERFORMANCE REPORT" in output
+        with caplog.at_level("INFO", logger="src.performance.metrics"):
+            tracker.print_report()
+        assert "BACKTEST PERFORMANCE REPORT" in caplog.text

@@ -15,8 +15,8 @@ execution:
 strategy:
   name: "sma_crossover"
   parameters:
-    fast_period: 10
-    slow_period: 30
+    short_window: 10
+    long_window: 30
 
 sizing:
   method: "fixed_fraction"

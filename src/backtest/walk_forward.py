@@ -9,12 +9,15 @@ performance persists out-of-sample:
     - WFE < 30% suggests overfitting
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -170,10 +173,14 @@ class WalkForwardRunner:
             test_start_str = window.test_start.strftime("%Y-%m-%d")
             test_end_str = window.test_end.strftime("%Y-%m-%d")
 
-            print(
-                f"Window {window.window_id + 1}/{total}: "
-                f"Train {train_start_str} to {train_end_str}, "
-                f"Test {test_start_str} to {test_end_str}"
+            logger.info(
+                "Window %d/%d: Train %s to %s, Test %s to %s",
+                window.window_id + 1,
+                total,
+                train_start_str,
+                train_end_str,
+                test_start_str,
+                test_end_str,
             )
 
             # Train period

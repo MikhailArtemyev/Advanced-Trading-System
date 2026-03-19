@@ -13,6 +13,7 @@ from ..data.data_handler import DataHandler
 from ..events.event import SignalEvent, SignalType
 from ..optimization.base_optimizer import PortfolioOptimizer
 from .base_strategy import Strategy
+from .crossover import detect_sma_crossover
 
 
 class MultiAssetSMAStrategy(Strategy):
@@ -183,35 +184,23 @@ class MultiAssetSMAStrategy(Strategy):
         if len(bars) < self.long_window:
             return None
 
-        close_prices = bars["close"]
-        short_sma = close_prices.tail(self.short_window).mean()
-        long_sma = close_prices.tail(self.long_window).mean()
-
-        prev_short = self.prev_short_sma.get(symbol)
-        prev_long = self.prev_long_sma.get(symbol)
-
+        crossover, short_sma, long_sma = detect_sma_crossover(
+            bars["close"],
+            self.short_window,
+            self.long_window,
+            self.prev_short_sma.get(symbol),
+            self.prev_long_sma.get(symbol),
+        )
         self.prev_short_sma[symbol] = short_sma
         self.prev_long_sma[symbol] = long_sma
 
-        if prev_short is None or prev_long is None:
-            return None
-
-        # Use target weight as signal strength for LONG signals
-        strength = self.target_weights.get(symbol, 0.0)
-
-        # Bullish crossover: short crosses above long
-        if prev_short <= prev_long and short_sma > long_sma:
-            if self.current_positions.get(symbol, 0) <= 0:
-                return self._create_signal(
-                    timestamp, symbol, SignalType.LONG, strength=strength
-                )
-
-        # Bearish crossover: short crosses below long
-        elif prev_short >= prev_long and short_sma < long_sma:
-            if self.current_positions.get(symbol, 0) > 0:
-                return self._create_signal(
-                    timestamp, symbol, SignalType.EXIT, strength=1.0
-                )
+        if crossover == "bullish" and self.current_positions.get(symbol, 0) <= 0:
+            strength = self.target_weights.get(symbol, 0.0)
+            return self._create_signal(
+                timestamp, symbol, SignalType.LONG, strength=strength
+            )
+        elif crossover == "bearish" and self.current_positions.get(symbol, 0) > 0:
+            return self._create_signal(timestamp, symbol, SignalType.EXIT, strength=1.0)
 
         return None
 

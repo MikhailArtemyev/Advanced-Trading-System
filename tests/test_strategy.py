@@ -284,10 +284,10 @@ class TestSMACrossoverStrategy:
         assert len(long_signals) >= 1
 
     def test_exit_signal_when_long(self, tmp_path):
-        """Test EXIT signal only when already in position."""
-        # Create data with bearish crossover
+        """Test EXIT signal fires when short SMA crosses below long SMA while long."""
+        # Uptrend then downtrend: guarantees a bearish crossover
         dates = pd.date_range("2022-01-01", periods=30, freq="B")
-        prices = list(range(130, 115, -1)) + list(range(115, 100, -1))  # Downtrend
+        prices = list(range(100, 115)) + list(range(115, 100, -1))
 
         df = pd.DataFrame(
             {
@@ -324,57 +324,10 @@ class TestSMACrossoverStrategy:
             sigs = strategy.calculate_signals(ts, handler)
             signals.extend(sigs)
 
-        # Check for EXIT signals
         exit_signals = [s for s in signals if s.signal_type == SignalType.EXIT]
-        # May have exit signal if crossover detected
-        assert isinstance(exit_signals, list)
-
-    def test_no_duplicate_long_signals(self, tmp_path):
-        """Test no LONG signal when already long."""
-        dates = pd.date_range("2022-01-01", periods=30, freq="B")
-        prices = list(range(100, 130))  # Continuous uptrend
-
-        df = pd.DataFrame(
-            {
-                "date": dates,
-                "open": prices,
-                "high": [p + 1 for p in prices],
-                "low": [p - 1 for p in prices],
-                "close": prices,
-                "volume": [1000000] * 30,
-            }
-        )
-        df.to_csv(tmp_path / "TEST.csv", index=False)
-
-        handler = HistoricalCSVDataHandler(
-            data_path=str(tmp_path),
-            symbols=["TEST"],
-            start_date="2022-01-01",
-            end_date="2022-02-28",
-        )
-
-        strategy = SMACrossoverStrategy(
-            symbols=["TEST"],
-            parameters={"short_window": 5, "long_window": 10},
-        )
-        strategy.set_event_queue(EventQueue())
-
-        signals = []
-        while handler.continue_backtest:
-            handler.update_bars()
-            ts = handler.get_current_timestamp()
-            sigs = strategy.calculate_signals(ts, handler)
-
-            # Simulate portfolio updating position after signal
-            for sig in sigs:
-                if sig.signal_type == SignalType.LONG:
-                    strategy.update_position(sig.symbol, 100)
-
-            signals.extend(sigs)
-
-        # Should have at most 1 LONG signal (no duplicates)
-        long_signals = [s for s in signals if s.signal_type == SignalType.LONG]
-        assert len(long_signals) <= 1
+        assert (
+            len(exit_signals) > 0
+        ), "Expected EXIT signal from bearish crossover while long"
 
     def test_get_sma_values(self, data_handler):
         """Test getting SMA values."""

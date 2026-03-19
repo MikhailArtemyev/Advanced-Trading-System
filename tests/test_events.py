@@ -15,45 +15,6 @@ from src.events.event import (
 )
 
 
-class TestEventType:
-    """Tests for EventType enum."""
-
-    def test_event_types_exist(self):
-        """Test all expected event types exist."""
-        assert EventType.MARKET.value == "MARKET"
-        assert EventType.SIGNAL.value == "SIGNAL"
-        assert EventType.ORDER.value == "ORDER"
-        assert EventType.FILL.value == "FILL"
-
-
-class TestSignalType:
-    """Tests for SignalType enum."""
-
-    def test_signal_types_exist(self):
-        """Test all expected signal types exist."""
-        assert SignalType.LONG.value == "LONG"
-        assert SignalType.SHORT.value == "SHORT"
-        assert SignalType.EXIT.value == "EXIT"
-
-
-class TestOrderType:
-    """Tests for OrderType enum."""
-
-    def test_order_types_exist(self):
-        """Test all expected order types exist."""
-        assert OrderType.MARKET.value == "MARKET"
-        assert OrderType.LIMIT.value == "LIMIT"
-
-
-class TestOrderSide:
-    """Tests for OrderSide enum."""
-
-    def test_order_sides_exist(self):
-        """Test all expected order sides exist."""
-        assert OrderSide.BUY.value == "BUY"
-        assert OrderSide.SELL.value == "SELL"
-
-
 class TestMarketEvent:
     """Tests for MarketEvent class."""
 

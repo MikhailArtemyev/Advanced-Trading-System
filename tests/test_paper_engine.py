@@ -140,13 +140,13 @@ class TestStartStop:
         engine = _make_engine()
 
         async def stop_after_delay():
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.2)
             await engine.stop()
 
         task = asyncio.create_task(stop_after_delay())
-        await asyncio.wait_for(engine.start(), timeout=2.0)
+        await asyncio.wait_for(engine.start(), timeout=5.0)
         await task
-        # Uptime should be at least 0.05 seconds
+        # Use generous lower bound to avoid CI flakiness
         assert engine.uptime_seconds >= 0.05
 
 

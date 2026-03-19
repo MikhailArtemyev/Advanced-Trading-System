@@ -169,7 +169,7 @@ def build_components(
             slippage_pct=config.execution.slippage_pct,
             fill_delay_seconds=live_cfg.broker.fill_delay_ms / 1000.0,
         )
-        broker._data_handler = data_handler
+        broker.set_data_handler(data_handler)
 
     # Order manager
     order_manager = OrderManager(broker=broker)
@@ -226,14 +226,26 @@ def generate_synthetic_ticks(
     duration_minutes: int = 30,
     bar_interval_seconds: int = 60,
     ticks_per_second: float = 2.0,
+    base_prices: dict[str, float] | None = None,
 ) -> list[Tick]:
     """Generate synthetic ticks for demo paper trading.
 
     Creates realistic-looking price movements with a sine wave trend
     so SMA crossover strategies can generate signals.
+
+    Args:
+        symbols: List of symbols to generate ticks for
+        duration_minutes: Total duration of synthetic data
+        bar_interval_seconds: Interval between bars (unused, kept for API compat)
+        ticks_per_second: Number of ticks per second per symbol
+        base_prices: Optional symbol → base price mapping. Symbols not in
+            this dict default to 100.0.
     """
+    known_prices = {"AAPL": 175.0, "MSFT": 380.0, "GOOGL": 140.0}
+    if base_prices is not None:
+        known_prices.update(base_prices)
+
     ticks: list[Tick] = []
-    base_prices = {"AAPL": 175.0, "MSFT": 380.0, "GOOGL": 140.0}
     total_seconds = duration_minutes * 60
     dt = 1.0 / ticks_per_second
     start = datetime.now()
@@ -242,7 +254,7 @@ def generate_synthetic_ticks(
         t = i * dt
         timestamp = start + timedelta(seconds=t)
         for symbol in symbols:
-            base = base_prices.get(symbol, 100.0)
+            base = known_prices.get(symbol, 100.0)
             # Sine wave for crossover + small noise
             trend = base * 0.03 * math.sin(2 * math.pi * t / (5 * 60))
             noise = base * 0.001 * math.sin(t * 17.3 + hash(symbol) % 100)
@@ -469,6 +481,10 @@ def main() -> None:
         help="Enable Rich terminal dashboard",
     )
     args = parser.parse_args()
+
+    if not Path(args.config).exists():
+        print(f"Error: config file not found: {args.config}")
+        sys.exit(1)
 
     config = load_config(args.config)
 
