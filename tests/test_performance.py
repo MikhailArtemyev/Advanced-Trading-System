@@ -395,20 +395,20 @@ class TestTradeMetrics:
 class TestPrintReport:
     """Tests for report printing."""
 
-    def test_print_report_runs(self, capsys):
+    def test_print_report_runs(self, caplog):
         """Test that print_report executes without error."""
         tracker = PerformanceTracker(initial_capital=100000.0)
 
         tracker.update(datetime(2023, 1, 1), 100000.0)
         tracker.update(datetime(2023, 1, 2), 105000.0)
 
-        tracker.print_report()
+        with caplog.at_level("INFO", logger="src.performance.metrics"):
+            tracker.print_report()
 
-        captured = capsys.readouterr()
-        assert "BACKTEST PERFORMANCE REPORT" in captured.out
-        assert "$100,000.00" in captured.out
+        assert "BACKTEST PERFORMANCE REPORT" in caplog.text
+        assert "$100,000.00" in caplog.text
 
-    def test_print_report_with_trades(self, capsys):
+    def test_print_report_with_trades(self, caplog):
         """Test report printing with trade data."""
         tracker = PerformanceTracker(initial_capital=100000.0)
 
@@ -417,21 +417,21 @@ class TestPrintReport:
 
         trades = [MagicMock(side="SELL", pnl=500)]
 
-        tracker.print_report(trades)
+        with caplog.at_level("INFO", logger="src.performance.metrics"):
+            tracker.print_report(trades)
 
-        captured = capsys.readouterr()
-        assert "Total Trades:" in captured.out
+        assert "Total Trades:" in caplog.text
 
-    def test_print_report_insufficient_data(self, capsys):
+    def test_print_report_insufficient_data(self, caplog):
         """Test report with insufficient data."""
         tracker = PerformanceTracker(initial_capital=100000.0)
 
         tracker.update(datetime(2023, 1, 1), 100000.0)
 
-        tracker.print_report()
+        with caplog.at_level("WARNING", logger="src.performance.metrics"):
+            tracker.print_report()
 
-        captured = capsys.readouterr()
-        assert "Cannot generate report" in captured.out
+        assert "Cannot generate report" in caplog.text
 
 
 class TestReset:

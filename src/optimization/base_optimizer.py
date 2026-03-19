@@ -90,6 +90,6 @@ class PortfolioOptimizer(ABC):
         )
 
     @property
+    @abstractmethod
     def _method_name(self) -> str:
         """Return the optimizer's method name for AllocationResult."""
-        raise NotImplementedError
