@@ -8,33 +8,11 @@ import pytest
 from src.events.event import SignalType
 from src.events.queue import EventQueue
 from src.strategy.mean_reversion import MeanReversionStrategy
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-class FakeDataHandler:
-    """Minimal DataHandler stub."""
-
-    def __init__(self, data: dict[str, pd.DataFrame]) -> None:
-        self._data = data
-
-    def get_latest_bars(self, symbol: str, n: int) -> pd.DataFrame:
-        df = self._data.get(symbol, pd.DataFrame())
-        return df.tail(n)
+from tests.helpers import FakeDataHandler, make_ohlcv
 
 
 def _make_prices(values: list[float]) -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "open": values,
-            "high": [v + 1 for v in values],
-            "low": [v - 1 for v in values],
-            "close": values,
-            "volume": [1000] * len(values),
-        }
-    )
+    return make_ohlcv(values)
 
 
 def _stable_then_spike(n: int, base: float, spike: float) -> pd.DataFrame:
