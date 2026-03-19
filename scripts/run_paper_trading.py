@@ -23,6 +23,10 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from src.alerts.alert_manager import AlertManager
 from src.alerts.base_alert import AlertChannel, AlertLevel
 from src.alerts.email_alert import EmailAlert
