@@ -4,10 +4,13 @@ CRITICAL: These classes enforce no look-ahead bias by only exposing
 data up to the current simulation index.
 """
 
+import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 class DataHandler(ABC):
@@ -132,9 +135,12 @@ class HistoricalCSVDataHandler(DataHandler):
             if len(df) > self.max_index:
                 self.max_index = len(df)
 
-        print(
-            f"Loaded {len(self.symbols)} symbols, "
-            f"{self.max_index} bars from {self.start_date.date()} to {self.end_date.date()}"
+        logger.info(
+            "Loaded %d symbols, %d bars from %s to %s",
+            len(self.symbols),
+            self.max_index,
+            self.start_date.date(),
+            self.end_date.date(),
         )
 
     def get_latest_bars(self, symbol: str, n: int = 1) -> pd.DataFrame:
