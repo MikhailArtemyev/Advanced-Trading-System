@@ -100,6 +100,9 @@ ignore = [
     "B008",   # do not perform function calls in argument defaults
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]  # sys.path.insert before imports
+
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
 
