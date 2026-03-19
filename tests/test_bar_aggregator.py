@@ -85,17 +85,17 @@ class TestBarAggregatorInit:
     def test_callback_stored(self):
         cb = lambda bar: None  # noqa: E731
         agg = BarAggregator(interval=timedelta(minutes=1), on_bar=cb)
-        assert agg.on_bar is cb
+        assert agg.bar_callback is cb
 
     def test_no_callback(self):
         agg = BarAggregator(interval=timedelta(minutes=1))
-        assert agg.on_bar is None
+        assert agg.bar_callback is None
 
     def test_set_callback(self):
         agg = BarAggregator(interval=timedelta(minutes=1))
         cb = lambda bar: None  # noqa: E731
-        agg.on_bar = cb
-        assert agg.on_bar is cb
+        agg.bar_callback = cb
+        assert agg.bar_callback is cb
 
 
 # ---------------------------------------------------------------------------

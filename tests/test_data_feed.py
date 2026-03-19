@@ -127,10 +127,10 @@ class TestLiveDataFeed:
         symbols.add("AAPL")
         assert "AAPL" not in feed.subscribed_symbols
 
-    def test_add_listener(self):
+    def test_add_tick_callback(self):
         feed = MockDataFeed()
         received: list[Tick] = []
-        feed.add_listener(received.append)
+        feed.add_tick_callback(received.append)
 
         tick = Tick(symbol="AAPL", timestamp=datetime(2025, 1, 15), price=150.0)
         feed.emit_tick(tick)
@@ -138,12 +138,12 @@ class TestLiveDataFeed:
         assert len(received) == 1
         assert received[0] == tick
 
-    def test_multiple_listeners(self):
+    def test_multiple_tick_callbacks(self):
         feed = MockDataFeed()
         received_a: list[Tick] = []
         received_b: list[Tick] = []
-        feed.add_listener(received_a.append)
-        feed.add_listener(received_b.append)
+        feed.add_tick_callback(received_a.append)
+        feed.add_tick_callback(received_b.append)
 
         tick = Tick(symbol="AAPL", timestamp=datetime(2025, 1, 15), price=150.0)
         feed.emit_tick(tick)
@@ -151,21 +151,21 @@ class TestLiveDataFeed:
         assert len(received_a) == 1
         assert len(received_b) == 1
 
-    def test_remove_listener(self):
+    def test_remove_tick_callback(self):
         feed = MockDataFeed()
         received: list[Tick] = []
-        feed.add_listener(received.append)
-        feed.remove_listener(received.append)
+        feed.add_tick_callback(received.append)
+        feed.remove_tick_callback(received.append)
 
         tick = Tick(symbol="AAPL", timestamp=datetime(2025, 1, 15), price=150.0)
         feed.emit_tick(tick)
 
         assert len(received) == 0
 
-    def test_remove_nonexistent_listener_raises(self):
+    def test_remove_nonexistent_tick_callback_raises(self):
         feed = MockDataFeed()
         with pytest.raises(ValueError):
-            feed.remove_listener(lambda t: None)
+            feed.remove_tick_callback(lambda t: None)
 
     @pytest.mark.asyncio
     async def test_connect_sets_status(self):
@@ -193,7 +193,7 @@ class TestLiveDataFeed:
         await feed.unsubscribe(["MSFT"])
         assert feed.subscribed_symbols == {"AAPL", "GOOGL"}
 
-    def test_on_tick_with_no_listeners(self):
+    def test_on_tick_with_no_callbacks(self):
         feed = MockDataFeed()
         tick = Tick(symbol="AAPL", timestamp=datetime(2025, 1, 15), price=150.0)
         # Should not raise
@@ -202,7 +202,7 @@ class TestLiveDataFeed:
     def test_dispatch_multiple_ticks(self):
         feed = MockDataFeed()
         received: list[Tick] = []
-        feed.add_listener(received.append)
+        feed.add_tick_callback(received.append)
 
         for i in range(5):
             tick = Tick(
@@ -495,7 +495,7 @@ class TestWebSocketDataFeed:
         feed._should_run = True
 
         received: list[Tick] = []
-        feed.add_listener(received.append)
+        feed.add_tick_callback(received.append)
 
         import aiohttp
 
