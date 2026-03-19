@@ -3,11 +3,14 @@
 Provides comprehensive performance analysis for backtesting results.
 """
 
+import logging
 from datetime import datetime
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 class PerformanceTracker:
@@ -410,41 +413,45 @@ class PerformanceTracker:
             metrics = self.calculate_metrics()
 
         if "error" in metrics:
-            print(f"Cannot generate report: {metrics['error']}")
+            logger.warning("Cannot generate report: %s", metrics["error"])
             return
 
-        print("\n" + "=" * 60)
-        print("BACKTEST PERFORMANCE REPORT")
-        print("=" * 60)
-
-        print("\nCapital:")
-        print(f"  Initial:        ${metrics['initial_capital']:,.2f}")
-        print(f"  Final:          ${metrics['final_equity']:,.2f}")
-        print(f"  Total Return:   {metrics['total_return_pct']:.2f}%")
-
-        print("\nRisk-Adjusted Metrics:")
-        print(f"  Annualized Return: {metrics['annualized_return_pct']:.2f}%")
-        print(f"  Sharpe Ratio:      {metrics['sharpe_ratio']:.2f}")
-        print(f"  Sortino Ratio:     {metrics['sortino_ratio']:.2f}")
-        print(f"  Calmar Ratio:      {metrics['calmar_ratio']:.2f}")
-
-        print("\nRisk Metrics:")
-        print(f"  Volatility:        {metrics['volatility_pct']:.2f}%")
-        print(f"  Max Drawdown:      {metrics['max_drawdown_pct']:.2f}%")
+        lines = [
+            "",
+            "=" * 60,
+            "BACKTEST PERFORMANCE REPORT",
+            "=" * 60,
+            "",
+            "Capital:",
+            f"  Initial:        ${metrics['initial_capital']:,.2f}",
+            f"  Final:          ${metrics['final_equity']:,.2f}",
+            f"  Total Return:   {metrics['total_return_pct']:.2f}%",
+            "",
+            "Risk-Adjusted Metrics:",
+            f"  Annualized Return: {metrics['annualized_return_pct']:.2f}%",
+            f"  Sharpe Ratio:      {metrics['sharpe_ratio']:.2f}",
+            f"  Sortino Ratio:     {metrics['sortino_ratio']:.2f}",
+            f"  Calmar Ratio:      {metrics['calmar_ratio']:.2f}",
+            "",
+            "Risk Metrics:",
+            f"  Volatility:        {metrics['volatility_pct']:.2f}%",
+            f"  Max Drawdown:      {metrics['max_drawdown_pct']:.2f}%",
+        ]
 
         if "risk_metrics" in metrics:
             rm = metrics["risk_metrics"]
             if "avg_position_count" in rm:
-                print(f"  Avg Positions:     {rm['avg_position_count']:.1f}")
+                lines.append(f"  Avg Positions:     {rm['avg_position_count']:.1f}")
             if "max_position_count" in rm:
-                print(f"  Max Positions:     {rm['max_position_count']}")
+                lines.append(f"  Max Positions:     {rm['max_position_count']}")
             if "gross_exposure_avg" in rm:
-                print(f"  Avg Exposure:      {rm['gross_exposure_avg']:.1%}")
+                lines.append(f"  Avg Exposure:      {rm['gross_exposure_avg']:.1%}")
             if "turnover" in rm:
-                print(f"  Turnover (ann.):   {rm['turnover']:.2f}")
+                lines.append(f"  Turnover (ann.):   {rm['turnover']:.2f}")
 
-        print("\nTrading:")
-        print(f"  Trading Days:      {metrics['trading_days']}")
+        lines.append("")
+        lines.append("Trading:")
+        lines.append(f"  Trading Days:      {metrics['trading_days']}")
 
         if "trade_metrics" in metrics:
             trade_metrics = metrics["trade_metrics"]
@@ -454,16 +461,18 @@ class PerformanceTracker:
             trade_metrics = None
 
         if trade_metrics:
-            print(f"  Total Trades:      {trade_metrics['total_trades']}")
-            print(f"  Win Rate:          {trade_metrics['win_rate_pct']:.1f}%")
-            print(f"  Profit Factor:     {trade_metrics['profit_factor']:.2f}")
+            lines.append(f"  Total Trades:      {trade_metrics['total_trades']}")
+            lines.append(f"  Win Rate:          {trade_metrics['win_rate_pct']:.1f}%")
+            lines.append(f"  Profit Factor:     {trade_metrics['profit_factor']:.2f}")
 
             if trade_metrics["winning_trades"] > 0:
-                print(f"  Avg Win:           ${trade_metrics['avg_win']:.2f}")
+                lines.append(f"  Avg Win:           ${trade_metrics['avg_win']:.2f}")
             if trade_metrics["losing_trades"] > 0:
-                print(f"  Avg Loss:          ${trade_metrics['avg_loss']:.2f}")
+                lines.append(f"  Avg Loss:          ${trade_metrics['avg_loss']:.2f}")
 
-        print("\n" + "=" * 60)
+        lines.append("")
+        lines.append("=" * 60)
+        logger.info("\n".join(lines))
 
     def reset(self) -> None:
         """Reset the equity curve for a new backtest."""

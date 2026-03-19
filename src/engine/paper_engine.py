@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from src.broker.base_broker import BrokerFill
+from src.broker.base_broker import BrokerFill, OrderStatus
 from src.broker.order_manager import OrderManager
 from src.data.data_handler import DataHandler
 from src.events.event import (
@@ -219,7 +219,7 @@ class PaperTradingEngine:
             )
 
             # If filled immediately (paper broker market orders), emit FillEvent
-            if broker_order.status.name == "FILLED":
+            if broker_order.status == OrderStatus.FILLED:
                 fill = BrokerFill(
                     order_id=broker_order.order_id,
                     symbol=broker_order.symbol,
