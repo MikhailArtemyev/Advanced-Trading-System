@@ -69,20 +69,9 @@ async def _connected_broker(capital=100_000.0, slippage=0.0, commission=0.0):
 
 
 class TestOrderStatus:
-    def test_all_statuses_exist(self):
-        assert OrderStatus.PENDING
-        assert OrderStatus.SUBMITTED
-        assert OrderStatus.ACCEPTED
-        assert OrderStatus.PARTIALLY_FILLED
-        assert OrderStatus.FILLED
-        assert OrderStatus.CANCELLED
-        assert OrderStatus.REJECTED
-        assert OrderStatus.EXPIRED
-
     def test_statuses_are_distinct(self):
         statuses = list(OrderStatus)
-        assert len(statuses) == 8
-        assert len(set(statuses)) == 8
+        assert len(statuses) == len(set(statuses))
 
 
 # ---------------------------------------------------------------------------

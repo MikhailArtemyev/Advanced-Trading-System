@@ -8,35 +8,11 @@ import pytest
 from src.events.event import SignalType
 from src.events.queue import EventQueue
 from src.strategy.momentum import MomentumStrategy
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-class FakeDataHandler:
-    """Minimal DataHandler stub for strategy tests."""
-
-    def __init__(self, data: dict[str, pd.DataFrame]) -> None:
-        self._data = data
-
-    def get_latest_bars(self, symbol: str, n: int) -> pd.DataFrame:
-        df = self._data.get(symbol, pd.DataFrame())
-        return df.tail(n)
+from tests.helpers import FakeDataHandler, make_ohlcv_trend
 
 
 def _make_prices(start: float, n: int, trend: float = 0.0) -> pd.DataFrame:
-    """Generate a simple price DataFrame with linear trend."""
-    closes = [start + i * trend for i in range(n)]
-    return pd.DataFrame(
-        {
-            "open": closes,
-            "high": [c + 1 for c in closes],
-            "low": [c - 1 for c in closes],
-            "close": closes,
-            "volume": [1000] * n,
-        }
-    )
+    return make_ohlcv_trend(start, n, trend)
 
 
 # ===========================================================================
