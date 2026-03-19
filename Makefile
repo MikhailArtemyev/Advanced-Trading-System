@@ -77,9 +77,13 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 
-# Download sample data
+# Download sample data (skips if data directory already has CSV files)
 download-data:
-	$(PYTHON) scripts/download_data.py --symbols AAPL MSFT GOOGL
+	@if [ -d data/sample ] && ls data/sample/*.csv >/dev/null 2>&1; then \
+		echo "Data files already exist, skipping download"; \
+	else \
+		$(PYTHON) scripts/download_data.py --symbols AAPL MSFT GOOGL; \
+	fi
 
 # Run backtest (downloads data first if needed)
 run: download-data

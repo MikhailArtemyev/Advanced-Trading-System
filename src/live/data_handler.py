@@ -44,7 +44,7 @@ class LiveDataHandler(DataHandler):
         self._new_bar_available = False
 
         # Register as a bar listener
-        self._bar_aggregator.on_bar = self._on_new_bar
+        self._bar_aggregator.bar_callback = self._on_new_bar
 
     def _on_new_bar(self, bar: Bar) -> None:
         """Called by the BarAggregator when a bar completes."""

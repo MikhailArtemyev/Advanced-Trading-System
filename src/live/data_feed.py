@@ -69,11 +69,11 @@ class LiveDataFeed(ABC):
         """Set of currently subscribed symbols (copy)."""
         return self._symbols.copy()
 
-    def add_listener(self, callback: Callable[[Tick], None]) -> None:
+    def add_tick_callback(self, callback: Callable[[Tick], None]) -> None:
         """Register a callback invoked on each tick."""
         self._listeners.append(callback)
 
-    def remove_listener(self, callback: Callable[[Tick], None]) -> None:
+    def remove_tick_callback(self, callback: Callable[[Tick], None]) -> None:
         """Unregister a tick callback."""
         self._listeners.remove(callback)
 
