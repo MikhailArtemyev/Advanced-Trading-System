@@ -1,7 +1,7 @@
 """Base types for the alerting system.
 
-Defines AlertLevel, AlertMessage, and the AlertChannel ABC that
-all notification backends implement.
+Defines AlertLevel, AlertMessage, and the AlertSubscriber ABC
+that all notification backends implement (observer pattern).
 """
 
 from abc import ABC, abstractmethod
@@ -38,13 +38,13 @@ class AlertMessage:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-class AlertChannel(ABC):
-    """Abstract base for notification backends (Slack, email, webhook, etc.)."""
+class AlertSubscriber(ABC):
+    """Observer interface — receives alert messages from the publisher."""
 
     @abstractmethod
-    async def send(self, message: AlertMessage) -> bool:
-        """Send an alert message. Returns True on success."""
+    async def on_alert(self, message: AlertMessage) -> bool:
+        """Handle an alert message. Returns True on success."""
 
     @abstractmethod
     async def test_connection(self) -> bool:
-        """Verify that the channel is reachable. Returns True on success."""
+        """Verify that the subscriber's backend is reachable."""
