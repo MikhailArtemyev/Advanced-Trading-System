@@ -1,20 +1,19 @@
 """Phase 5 integration tests — end-to-end scenarios for new capabilities.
 
 Tests cover: strategy templates in the full pipeline, SQLite trade persistence,
-alert manager wiring, dashboard lifecycle, config env-var loading, startup
+alert manager wiring, config env-var loading, startup
 validation, and module exports for all Phase 5 packages.
 """
 
 import asyncio
 import math
 from datetime import datetime, timedelta
-from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
-from src.alerts.alert_manager import AlertManager
-from src.alerts.base_alert import AlertLevel, AlertMessage
+from src.alerts.alert_manager import AlertPublisher
+from src.alerts.base_alert import AlertLevel, AlertMessage, AlertSubscriber
 from src.broker.order_manager import OrderManager
 from src.broker.paper_broker import PaperBroker
 from src.config import (
@@ -26,7 +25,6 @@ from src.config import (
     StrategyConfig,
     load_config,
 )
-from src.dashboard.terminal_ui import TradingDashboard
 from src.engine.paper_engine import PaperTradingEngine
 from src.live.bar_aggregator import BarAggregator
 from src.live.data_feed import Tick
@@ -325,32 +323,29 @@ class TestDatabasePersistence:
         storage.close()
 
 
-# ── Alert Manager Wiring ────────────────────────────────────────────
+# ── Alert Pub/Sub Wiring ───────────────────────────────────────────
 
 
-class TestAlertManagerWiring:
-    """AlertManager integrates with HealthMonitor."""
+class TestAlertPubSubWiring:
+    """AlertPublisher integrates with HealthMonitor."""
 
     def test_health_report_triggers_alert(self):
-        sent: list[AlertMessage] = []
+        received: list[AlertMessage] = []
 
-        class RecordingChannel:
-            async def send(self, msg):
-                sent.append(msg)
+        class RecordingSub(AlertSubscriber):
+            async def on_alert(self, msg: AlertMessage) -> bool:
+                received.append(msg)
                 return True
 
-            async def test_connection(self):
+            async def test_connection(self) -> bool:
                 return True
 
-        manager = AlertManager(
-            channels=[RecordingChannel()],
-            min_level=AlertLevel.WARNING,
-            cooldown_seconds=0,
-        )
+        publisher = AlertPublisher(cooldown_seconds=0)
+        publisher.subscribe(RecordingSub(), min_level=AlertLevel.WARNING)
 
         monitor = HealthMonitor(max_bar_age_seconds=1.0)
         monitor.start()
-        monitor.add_alert_callback(manager.on_health_report)
+        monitor.add_alert_callback(publisher.on_health_report)
 
         # Stale data triggers DEGRADED
         old = datetime.now() - timedelta(seconds=30)
@@ -360,28 +355,25 @@ class TestAlertManagerWiring:
 
         # on_health_report fires async — run loop briefly
         loop = asyncio.new_event_loop()
-        manager.on_health_report(report)
+        publisher.on_health_report(report)
         loop.run_until_complete(asyncio.sleep(0.1))
         loop.close()
 
     @pytest.mark.asyncio
-    async def test_alert_manager_cooldown_integration(self):
+    async def test_publisher_cooldown_integration(self):
         sent_count = 0
 
-        class CountChannel:
-            async def send(self, msg):
+        class CountSub(AlertSubscriber):
+            async def on_alert(self, msg: AlertMessage) -> bool:
                 nonlocal sent_count
                 sent_count += 1
                 return True
 
-            async def test_connection(self):
+            async def test_connection(self) -> bool:
                 return True
 
-        manager = AlertManager(
-            channels=[CountChannel()],
-            min_level=AlertLevel.INFO,
-            cooldown_seconds=9999,  # very long cooldown
-        )
+        publisher = AlertPublisher(cooldown_seconds=9999)
+        publisher.subscribe(CountSub(), min_level=AlertLevel.INFO)
 
         # First alert goes through
         msg = AlertMessage(
@@ -391,63 +383,12 @@ class TestAlertManagerWiring:
             timestamp=datetime.now(),
             metadata={},
         )
-        await manager.send_alert(msg)
+        await publisher.publish(msg)
         assert sent_count == 1
 
         # Same title within cooldown is suppressed
-        await manager.send_alert(msg)
+        await publisher.publish(msg)
         assert sent_count == 1
-
-
-# ── Dashboard Integration ───────────────────────────────────────────
-
-
-class TestDashboardIntegration:
-    """Dashboard works with real engine components."""
-
-    @pytest.mark.asyncio
-    async def test_dashboard_with_engine(self):
-        symbols = ["TEST"]
-        aggregator = BarAggregator(interval=timedelta(seconds=5))
-        engine, dh, portfolio, broker, om = _build_engine(symbols, aggregator)
-        monitor = HealthMonitor()
-        monitor.start()
-
-        dash = TradingDashboard(engine, monitor, refresh_rate=0.05)
-
-        # Dashboard should build layout from real engine
-        layout = dash._build_layout()
-        assert layout is not None
-
-    @pytest.mark.asyncio
-    async def test_dashboard_survives_engine_lifecycle(self):
-        symbols = ["TEST"]
-        aggregator = BarAggregator(interval=timedelta(seconds=5))
-        engine, dh, portfolio, broker, om = _build_engine(symbols, aggregator)
-        monitor = HealthMonitor()
-        monitor.start()
-
-        dash = TradingDashboard(engine, monitor, refresh_rate=0.05)
-
-        async def run_then_stop():
-            await broker.connect()
-            ticks = _make_ticks("TEST", 100.0, n_minutes=1, bar_seconds=5)
-            for tick in ticks:
-                aggregator.on_tick(tick)
-            await asyncio.sleep(0.1)
-            await engine.stop()
-            await asyncio.sleep(0.1)
-            dash.stop()
-            await broker.disconnect()
-
-        with (
-            patch("src.dashboard.terminal_ui.Live"),
-            patch("src.dashboard.terminal_ui.RichHandler"),
-        ):
-            await asyncio.wait_for(
-                asyncio.gather(engine.start(), dash.start(), run_then_stop()),
-                timeout=5.0,
-            )
 
 
 # ── Config Validation Integration ───────────────────────────────────
@@ -595,19 +536,14 @@ class TestPhase5Exports:
         assert MeanReversionStrategy is not None
         assert PairsTradingStrategy is not None
 
-    def test_dashboard_exports(self):
-        from src.dashboard import TradingDashboard
-
-        assert TradingDashboard is not None
-
     def test_alerts_exports(self):
         from src.alerts import (
-            AlertChannel,
-            AlertManager,
+            AlertPublisher,
+            AlertSubscriber,
         )
 
-        assert AlertChannel is not None
-        assert AlertManager is not None
+        assert AlertPublisher is not None
+        assert AlertSubscriber is not None
 
     def test_storage_exports(self):
         from src.storage import NullStorage, SQLStorage, StorageBackend

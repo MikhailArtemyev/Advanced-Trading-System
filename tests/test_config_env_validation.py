@@ -64,22 +64,6 @@ class TestEnvVarLoading:
         cfg = DatabaseConfig(db_url="sqlite:///explicit.db")
         assert cfg.db_url == "sqlite:///explicit.db"
 
-    def test_slack_webhook_from_env(self, monkeypatch):
-        monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/test")
-        cfg = AlertConfig(
-            enabled=True,
-            channels=[{"type": "slack"}],
-        )
-        assert cfg.channels[0]["webhook_url"] == "https://hooks.slack.com/test"
-
-    def test_smtp_password_from_env(self, monkeypatch):
-        monkeypatch.setenv("SMTP_PASSWORD", "secret123")
-        cfg = AlertConfig(
-            enabled=True,
-            channels=[{"type": "email", "smtp_host": "smtp.example.com"}],
-        )
-        assert cfg.channels[0]["password"] == "secret123"
-
     def test_no_env_vars_keeps_defaults(self, monkeypatch):
         monkeypatch.delenv("ALPACA_API_KEY", raising=False)
         monkeypatch.delenv("ALPACA_API_SECRET", raising=False)
@@ -139,18 +123,6 @@ class TestValidateForLive:
         issues = cfg.validate_for_live()
         warnings = [i for i in issues if i.startswith("WARNING:")]
         assert any("no channels" in w for w in warnings)
-
-    def test_slack_channel_missing_webhook(self, monkeypatch):
-        monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
-        cfg = _base_config(
-            alerts=AlertConfig(
-                enabled=True,
-                channels=[{"type": "slack", "webhook_url": ""}],
-            )
-        )
-        issues = cfg.validate_for_live()
-        warnings = [i for i in issues if i.startswith("WARNING:")]
-        assert any("webhook_url" in w for w in warnings)
 
     def test_valid_config_no_issues(self):
         cfg = _base_config()
