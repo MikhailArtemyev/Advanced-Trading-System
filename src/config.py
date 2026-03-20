@@ -165,12 +165,7 @@ class AlertConfig(BaseModel):
         return v
 
     def model_post_init(self, __context: Any) -> None:
-        for channel in self.channels:
-            ch_type = channel.get("type", "")
-            if ch_type == "slack" and not channel.get("webhook_url"):
-                channel["webhook_url"] = os.environ.get("SLACK_WEBHOOK_URL", "")
-            elif ch_type == "email" and not channel.get("password"):
-                channel["password"] = os.environ.get("SMTP_PASSWORD", "")
+        pass
 
 
 class LiveConfig(BaseModel):
@@ -226,19 +221,6 @@ class BacktestConfig(BaseModel):
         alerts = self.live.alerts
         if alerts.enabled and not alerts.channels:
             issues.append("WARNING: Alerts are enabled but no channels configured")
-        if alerts.enabled:
-            for ch in alerts.channels:
-                ch_type = ch.get("type", "")
-                if ch_type == "slack" and not ch.get("webhook_url"):
-                    issues.append(
-                        "WARNING: Slack alert channel has no webhook_url "
-                        "(set in YAML or SLACK_WEBHOOK_URL env var)"
-                    )
-                elif ch_type == "email" and not ch.get("password"):
-                    issues.append(
-                        "WARNING: Email alert channel has no password "
-                        "(set in YAML or SMTP_PASSWORD env var)"
-                    )
 
         return issues
 

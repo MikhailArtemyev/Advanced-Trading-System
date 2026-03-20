@@ -526,19 +526,13 @@ class TestModuleExports:
 
     def test_alerts_exports(self):
         from src.alerts import (
-            AlertChannel,
             AlertLevel,
-            AlertManager,
             AlertMessage,
-            EmailAlert,
-            SlackAlert,
-            WebhookAlert,
+            AlertPublisher,
+            AlertSubscriber,
         )
 
-        assert AlertChannel is not None
         assert AlertLevel is not None
-        assert AlertManager is not None
         assert AlertMessage is not None
-        assert EmailAlert is not None
-        assert SlackAlert is not None
-        assert WebhookAlert is not None
+        assert AlertPublisher is not None
+        assert AlertSubscriber is not None

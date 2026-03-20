@@ -1,21 +1,15 @@
-"""Alerting and notification system for trading events.
+"""Pub/sub alerting system for trading events.
 
-Provides AlertChannel ABC with Slack, email, and webhook implementations,
-plus an AlertManager that routes alerts with level filtering and cooldown.
+AlertPublisher is the central bus. AlertSubscriber is the observer
+interface that notification backends (Telegram, etc.) implement.
 """
 
-from .alert_manager import AlertManager
-from .base_alert import AlertChannel, AlertLevel, AlertMessage
-from .email_alert import EmailAlert
-from .slack_alert import SlackAlert
-from .webhook_alert import WebhookAlert
+from .alert_manager import AlertPublisher
+from .base_alert import AlertLevel, AlertMessage, AlertSubscriber
 
 __all__ = [
-    "AlertChannel",
     "AlertLevel",
-    "AlertManager",
     "AlertMessage",
-    "EmailAlert",
-    "SlackAlert",
-    "WebhookAlert",
+    "AlertPublisher",
+    "AlertSubscriber",
 ]

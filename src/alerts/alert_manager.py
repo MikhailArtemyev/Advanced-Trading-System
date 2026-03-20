@@ -1,20 +1,20 @@
-"""AlertManager — routes alerts to channels with filtering and cooldown.
+"""AlertPublisher — pub/sub alert system.
 
-Integrates with HealthMonitor callbacks and can be wired into the
-PaperTradingEngine for trade and drawdown notifications.
+Publishers emit AlertMessages. Subscribers receive them filtered by
+minimum severity level and deduplicated by cooldown.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
 
 from src.monitoring.health import HealthReport
 
-from .base_alert import AlertChannel, AlertLevel, AlertMessage
+from .base_alert import AlertLevel, AlertMessage, AlertSubscriber
 
 logger = logging.getLogger(__name__)
 
-# Ordered severity so we can compare levels.
 _LEVEL_ORDER: dict[AlertLevel, int] = {
     AlertLevel.INFO: 0,
     AlertLevel.WARNING: 1,
@@ -22,62 +22,67 @@ _LEVEL_ORDER: dict[AlertLevel, int] = {
 }
 
 
-class AlertManager:
-    """Dispatch alerts to multiple channels with level filtering and cooldown.
+class AlertPublisher:
+    """Central alert bus — subscribers register, components publish.
 
     Args:
-        channels: List of alert backends.
-        min_level: Minimum severity to send. Alerts below this are dropped.
-        cooldown_seconds: Minimum interval between repeated alerts with the
-            same title.  Set to 0 to disable cooldown.
+        cooldown_seconds: Minimum interval between repeated alerts with
+            the same title. Set to 0 to disable cooldown.
     """
 
-    def __init__(
-        self,
-        channels: list[AlertChannel],
-        min_level: AlertLevel = AlertLevel.WARNING,
-        cooldown_seconds: float = 300.0,
-    ) -> None:
-        self._channels = list(channels)
-        self._min_level = min_level
+    def __init__(self, cooldown_seconds: float = 300.0) -> None:
+        self._subscribers: list[tuple[AlertSubscriber, AlertLevel]] = []
         self._cooldown_seconds = cooldown_seconds
         self._last_sent: dict[str, datetime] = {}
 
-    # ------------------------------------------------------------------
-    # Core dispatch
-    # ------------------------------------------------------------------
+    def subscribe(
+        self,
+        subscriber: AlertSubscriber,
+        min_level: AlertLevel = AlertLevel.WARNING,
+    ) -> None:
+        """Register a subscriber to receive alerts at or above min_level."""
+        self._subscribers.append((subscriber, min_level))
 
-    async def send_alert(self, message: AlertMessage) -> list[bool]:
-        """Send *message* to all channels, respecting level and cooldown.
+    def unsubscribe(self, subscriber: AlertSubscriber) -> None:
+        """Remove a subscriber."""
+        self._subscribers = [
+            (s, lvl) for s, lvl in self._subscribers if s is not subscriber
+        ]
+
+    async def publish(self, message: AlertMessage) -> list[bool]:
+        """Publish a message to all eligible subscribers.
+
+        Respects per-subscriber level filtering and global cooldown.
 
         Returns:
-            A list of booleans, one per channel, indicating success/failure.
+            A list of booleans, one per notified subscriber.
         """
-        if _LEVEL_ORDER[message.level] < _LEVEL_ORDER[self._min_level]:
-            return []
-
         if self._is_in_cooldown(message.title):
             logger.debug("Alert '%s' suppressed by cooldown", message.title)
             return []
 
+        msg_order = _LEVEL_ORDER[message.level]
         results: list[bool] = []
-        for channel in self._channels:
+        for subscriber, min_level in self._subscribers:
+            if msg_order < _LEVEL_ORDER[min_level]:
+                continue
             try:
-                ok = await channel.send(message)
+                ok = await subscriber.on_alert(message)
                 results.append(ok)
             except Exception:
-                logger.exception("Channel %s failed", type(channel).__name__)
+                logger.exception("Subscriber %s failed", type(subscriber).__name__)
                 results.append(False)
 
-        self._last_sent[message.title] = datetime.now()
+        if results:
+            self._last_sent[message.title] = datetime.now()
         return results
 
     # ------------------------------------------------------------------
-    # Convenience helpers
+    # Convenience publishers
     # ------------------------------------------------------------------
 
-    async def send_trade_alert(self, trade: dict[str, Any]) -> list[bool]:
-        """Format and send a trade notification."""
+    async def publish_trade(self, trade: dict[str, Any]) -> list[bool]:
+        """Publish a trade notification."""
         symbol = trade.get("symbol", "?")
         side = trade.get("side", "?")
         qty = trade.get("quantity", 0)
@@ -90,10 +95,10 @@ class AlertManager:
             body=f"Filled at ${price:,.2f} | PnL: ${pnl:,.2f}",
             metadata={"symbol": symbol, "side": side, "quantity": qty},
         )
-        return await self.send_alert(msg)
+        return await self.publish(msg)
 
-    async def send_health_alert(self, report: HealthReport) -> list[bool]:
-        """Format and send a health-status notification."""
+    async def publish_health(self, report: HealthReport) -> list[bool]:
+        """Publish a health-status notification."""
         level = AlertLevel.CRITICAL if report.errors else AlertLevel.WARNING
         msg = AlertMessage(
             level=level,
@@ -105,10 +110,10 @@ class AlertManager:
                 "latency_ms": f"{report.event_latency_ms:.1f}",
             },
         )
-        return await self.send_alert(msg)
+        return await self.publish(msg)
 
-    async def send_drawdown_alert(self, drawdown_pct: float) -> list[bool]:
-        """Alert on a significant drawdown percentage."""
+    async def publish_drawdown(self, drawdown_pct: float) -> list[bool]:
+        """Publish a drawdown alert."""
         level = AlertLevel.CRITICAL if drawdown_pct >= 10.0 else AlertLevel.WARNING
         msg = AlertMessage(
             level=level,
@@ -116,24 +121,21 @@ class AlertManager:
             body=f"Portfolio drawdown has reached {drawdown_pct:.1f}%.",
             metadata={"drawdown_pct": f"{drawdown_pct:.2f}"},
         )
-        return await self.send_alert(msg)
+        return await self.publish(msg)
 
     # ------------------------------------------------------------------
     # HealthMonitor callback adapter
     # ------------------------------------------------------------------
 
     def on_health_report(self, report: HealthReport) -> None:
-        """Synchronous callback suitable for HealthMonitor.add_alert_callback.
+        """Synchronous callback for HealthMonitor.add_alert_callback.
 
-        Fires-and-forgets the async send via the running event loop.
+        Fires-and-forgets the async publish via the running event loop.
         """
-        import asyncio
-
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self.send_health_alert(report))
+            loop.create_task(self.publish_health(report))
         except RuntimeError:
-            # No running loop — just log
             logger.warning("No event loop for health alert: %s", report.status.value)
 
     # ------------------------------------------------------------------
