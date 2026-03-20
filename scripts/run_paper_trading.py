@@ -27,16 +27,11 @@ load_dotenv()
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.alerts.alert_manager import AlertManager
-from src.alerts.base_alert import AlertChannel, AlertLevel
-from src.alerts.email_alert import EmailAlert
-from src.alerts.slack_alert import SlackAlert
-from src.alerts.webhook_alert import WebhookAlert
+from src.alerts.alert_manager import AlertPublisher
 from src.broker.alpaca_broker import AlpacaBroker
 from src.broker.order_manager import OrderManager
 from src.broker.paper_broker import PaperBroker
 from src.config import BacktestConfig, load_config
-from src.dashboard.terminal_ui import TradingDashboard
 from src.engine.paper_engine import PaperTradingEngine
 from src.live.bar_aggregator import BarAggregator, Tick
 from src.live.data_handler import LiveDataHandler
@@ -54,47 +49,6 @@ logging.basicConfig(
 logger = logging.getLogger("paper_trading")
 
 
-def build_alert_channels(config: BacktestConfig) -> list[AlertChannel]:
-    """Build alert channels from config."""
-    channels: list[AlertChannel] = []
-    alert_cfg = config.live.alerts
-    if not alert_cfg.enabled:
-        return channels
-
-    for ch_cfg in alert_cfg.channels:
-        ch_type = ch_cfg.get("type", "")
-        if ch_type == "slack":
-            channels.append(
-                SlackAlert(
-                    webhook_url=ch_cfg.get("webhook_url", ""),
-                    channel=ch_cfg.get("channel", ""),
-                )
-            )
-        elif ch_type == "email":
-            channels.append(
-                EmailAlert(
-                    smtp_host=ch_cfg.get("smtp_host", ""),
-                    smtp_port=ch_cfg.get("smtp_port", 587),
-                    username=ch_cfg.get("username", ""),
-                    password=ch_cfg.get("password", ""),
-                    from_address=ch_cfg.get("from_address", ""),
-                    to_addresses=ch_cfg.get("to_addresses", []),
-                )
-            )
-        elif ch_type == "webhook":
-            channels.append(
-                WebhookAlert(
-                    url=ch_cfg.get("url", ""),
-                    headers=ch_cfg.get("headers", {}),
-                    method=ch_cfg.get("method", "POST"),
-                )
-            )
-        else:
-            logger.warning("Unknown alert channel type: %s", ch_type)
-
-    return channels
-
-
 def build_components(
     config: BacktestConfig,
 ) -> tuple[
@@ -106,7 +60,7 @@ def build_components(
     SQLStorage,
     HealthMonitor,
     BarAggregator,
-    AlertManager | None,
+    AlertPublisher,
 ]:
     """Build all paper trading components from config."""
     symbols = config.data.symbols
@@ -197,20 +151,10 @@ def build_components(
         max_event_latency_ms=500.0,
     )
 
-    # Alert manager
-    alert_channels = build_alert_channels(config)
-    alert_manager: AlertManager | None = None
-    if alert_channels:
-        level_map = {
-            "info": AlertLevel.INFO,
-            "warning": AlertLevel.WARNING,
-            "critical": AlertLevel.CRITICAL,
-        }
-        alert_manager = AlertManager(
-            channels=alert_channels,
-            min_level=level_map.get(live_cfg.alerts.min_level, AlertLevel.WARNING),
-            cooldown_seconds=live_cfg.alerts.cooldown_seconds,
-        )
+    # Alert publisher (subscribers are added externally)
+    alert_publisher = AlertPublisher(
+        cooldown_seconds=live_cfg.alerts.cooldown_seconds,
+    )
 
     return (
         data_handler,
@@ -221,7 +165,7 @@ def build_components(
         storage,
         health_monitor,
         aggregator,
-        alert_manager,
+        alert_publisher,
     )
 
 
@@ -270,7 +214,7 @@ def generate_synthetic_ticks(
     return ticks
 
 
-async def run_paper_trading(config: BacktestConfig, dashboard: bool = False) -> None:
+async def run_paper_trading(config: BacktestConfig) -> None:
     """Run a paper trading session."""
     (
         data_handler,
@@ -281,7 +225,7 @@ async def run_paper_trading(config: BacktestConfig, dashboard: bool = False) -> 
         storage,
         health_monitor,
         aggregator,
-        alert_manager,
+        alert_publisher,
     ) = build_components(config)
 
     # Session ID is already set on storage — extract from portfolio
@@ -317,9 +261,8 @@ async def run_paper_trading(config: BacktestConfig, dashboard: bool = False) -> 
 
     health_monitor.add_alert_callback(on_health_alert)
 
-    # Wire alert manager into health monitor
-    if alert_manager is not None:
-        health_monitor.add_alert_callback(alert_manager.on_health_report)
+    # Wire alert publisher into health monitor
+    health_monitor.add_alert_callback(alert_publisher.on_health_report)
 
     # Graceful shutdown
     stop_event = asyncio.Event()
@@ -343,9 +286,7 @@ async def run_paper_trading(config: BacktestConfig, dashboard: bool = False) -> 
         ticks_per_bar = int(bar_interval * 2)  # 2 ticks/sec
         batch_size = max(1, ticks_per_bar)
 
-        # When dashboard is active, pace ticks so bars arrive every 1s
-        # instead of every 50ms — otherwise the session ends too fast to see.
-        tick_delay = 1.0 if dashboard else 0.05
+        tick_delay = 0.05
 
         for i in range(0, len(ticks), batch_size):
             if stop_event.is_set():
@@ -363,8 +304,6 @@ async def run_paper_trading(config: BacktestConfig, dashboard: bool = False) -> 
         await asyncio.sleep(0.5)
         await engine.stop()
         stop_event.set()
-        if dash is not None:
-            dash.stop()
 
     async def periodic_save() -> None:
         """Periodically save engine state to database."""
@@ -376,7 +315,7 @@ async def run_paper_trading(config: BacktestConfig, dashboard: bool = False) -> 
                 logger.info("Engine state saved to database")
 
     async def monitor_health() -> None:
-        """Periodically check health (skipped when dashboard is active)."""
+        """Periodically check health."""
         while not stop_event.is_set():
             await asyncio.sleep(5)
             report = health_monitor.get_health_report()
@@ -398,17 +337,10 @@ async def run_paper_trading(config: BacktestConfig, dashboard: bool = False) -> 
     print(f"  Storage:  {live_cfg.database.db_url}")
     print("=" * 60 + "\n")
 
-    # Optional dashboard
-    dash: TradingDashboard | None = None
-    if dashboard:
-        dash = TradingDashboard(engine, health_monitor, refresh_rate=1.0)
-
-    # Graceful shutdown — registered after dashboard so we can stop it
+    # Graceful shutdown
     def handle_signal() -> None:
         logger.info("Shutdown signal received")
         stop_event.set()
-        if dash is not None:
-            dash.stop()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
@@ -420,12 +352,8 @@ async def run_paper_trading(config: BacktestConfig, dashboard: bool = False) -> 
         engine.start(),
         feed_ticks(),
         periodic_save(),
+        monitor_health(),
     ]
-    # Dashboard replaces the health log task — it shows health in a panel
-    if dash is not None:
-        tasks.append(dash.start())
-    else:
-        tasks.append(monitor_health())
 
     try:
         await asyncio.gather(*tasks)
@@ -479,11 +407,6 @@ def main() -> None:
         default="configs/paper_trading_config.yaml",
         help="Path to config YAML",
     )
-    parser.add_argument(
-        "--dashboard",
-        action="store_true",
-        help="Enable Rich terminal dashboard",
-    )
     args = parser.parse_args()
 
     if not Path(args.config).exists():
@@ -507,7 +430,7 @@ def main() -> None:
             )
             sys.exit(1)
 
-    asyncio.run(run_paper_trading(config, dashboard=args.dashboard))
+    asyncio.run(run_paper_trading(config))
 
 
 if __name__ == "__main__":

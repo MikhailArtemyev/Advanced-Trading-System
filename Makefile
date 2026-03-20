@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install install-dev lint format type-check test test-cov clean help run run-baseline run-vol run-meanvar run-riskparity report run-config demo paper paper-dashboard paper-alpaca
+.PHONY: install install-dev lint format type-check test test-cov clean help run run-baseline run-vol run-meanvar run-riskparity report run-config demo paper paper-alpaca
 
 # Default target
 help:
@@ -114,10 +114,6 @@ paper:
 # Paper trading with Alpaca broker (requires .env with API keys)
 paper-alpaca:
 	$(PYTHON) ./scripts/run_paper_trading.py --config configs/alpaca_paper_config.yaml
-
-# Paper trading with Rich terminal dashboard
-paper-dashboard:
-	$(PYTHON) ./scripts/run_paper_trading.py --config configs/paper_trading_config.yaml --dashboard
 
 # Full report: run ALL configs, generate report + charts
 report: download-data
