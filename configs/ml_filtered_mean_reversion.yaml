@@ -19,8 +19,8 @@ data:
     - ROKU
   data_source: "alpaca"
   data_path: "data/alpaca_cache"
-  start_date: "2026-03-09"
-  end_date: "2026-03-14"
+  start_date: "2026-03-23"
+  end_date: "2026-03-29"
 
 execution:
   initial_capital: 100000.0
@@ -43,9 +43,12 @@ strategy:
     atr_period: 14
 
 sizing:
-  method: "fixed_fraction"
+  method: "volatility"
   parameters:
-    fraction: 0.10
+    risk_fraction: 0.02
+    atr_period: 14
+    atr_multiplier: 2.0
+    max_position_fraction: 0.15
 
 risk:
   enabled: true

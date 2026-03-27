@@ -44,9 +44,12 @@ strategy:
     atr_period: 14
 
 sizing:
-  method: "fixed_fraction"
+  method: "volatility"
   parameters:
-    fraction: 0.10
+    risk_fraction: 0.02
+    atr_period: 14
+    atr_multiplier: 2.0
+    max_position_fraction: 0.15
 
 risk:
   enabled: true
