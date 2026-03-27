@@ -14,11 +14,11 @@ Usage:
 import argparse
 import asyncio
 import logging
-import math
 import signal
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -27,20 +27,24 @@ load_dotenv()
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts.utils import STRATEGY_MAP, generate_synthetic_ticks
 from src.alerts.alert_manager import AlertPublisher
 from src.broker.alpaca_broker import AlpacaBroker
+from src.broker.base_broker import BrokerFill, OrderStatus
 from src.broker.order_manager import OrderManager
 from src.broker.paper_broker import PaperBroker
 from src.config import BacktestConfig, load_config
 from src.engine.paper_engine import PaperTradingEngine
-from src.live.bar_aggregator import BarAggregator, Tick
+from src.live.alpaca_feed import AlpacaDataFeed
+from src.live.alpaca_historical import AlpacaHistoricalClient, backfill_aggregator
+from src.live.bar_aggregator import Bar, BarAggregator, Tick
 from src.live.data_handler import LiveDataHandler
 from src.monitoring.health import HealthMonitor
 from src.portfolio.portfolio import Portfolio
 from src.risk.position_sizer import FixedFractionSizer
 from src.risk.risk_manager import RiskLimits, RiskManager
 from src.storage.sql_storage import SQLStorage
-from src.strategy.sma_crossover import SMACrossoverStrategy
+from src.strategy.base_strategy import Strategy
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,11 +53,168 @@ logging.basicConfig(
 logger = logging.getLogger("paper_trading")
 
 
+# ---------------------------------------------------------------------------
+# Helper functions (extracted from run_paper_trading for readability)
+# ---------------------------------------------------------------------------
+
+
+def on_health_alert(report: Any) -> None:
+    """Log health monitor alerts."""
+    logger.warning(
+        "Health alert: %s | warnings=%s errors=%s",
+        report.status.value,
+        report.warnings,
+        report.errors,
+    )
+
+
+async def feed_synthetic_ticks(
+    ticks: list[Tick],
+    aggregator: BarAggregator,
+    health_monitor: HealthMonitor,
+    bar_interval_seconds: int,
+    stop_event: asyncio.Event,
+    engine: PaperTradingEngine,
+) -> None:
+    """Feed synthetic ticks to the aggregator (demo mode only)."""
+    ticks_per_bar = int(bar_interval_seconds * 2)  # 2 ticks/sec
+    batch_size = max(1, ticks_per_bar)
+    tick_delay = 0.05
+
+    for i in range(0, len(ticks), batch_size):
+        if stop_event.is_set():
+            break
+        batch = ticks[i : i + batch_size]
+        for tick in batch:
+            aggregator.on_tick(tick)
+
+        health_monitor.record_bar(datetime.now())
+        await asyncio.sleep(tick_delay)
+
+    # Let engine process remaining events
+    await asyncio.sleep(0.5)
+    await engine.stop()
+    stop_event.set()
+
+
+async def run_alpaca_feed(
+    alpaca_feed: AlpacaDataFeed,
+    symbols: list[str],
+    stop_event: asyncio.Event,
+) -> None:
+    """Connect to Alpaca WebSocket and stream until stopped."""
+    await alpaca_feed.connect()
+    await alpaca_feed.subscribe(symbols)
+    logger.info("Alpaca data feed streaming for %s", symbols)
+
+    await stop_event.wait()
+
+    await alpaca_feed.disconnect()
+
+
+async def poll_order_fills(
+    stop_event: asyncio.Event,
+    order_manager: OrderManager,
+    portfolio: Portfolio,
+    engine: PaperTradingEngine,
+) -> None:
+    """Poll Alpaca for fill status on active orders.
+
+    Alpaca REST API returns orders as 'new'/'accepted', not 'filled'.
+    We must poll to detect when they fill, then emit FillEvents so the
+    portfolio and strategy stay in sync.
+    """
+    while not stop_event.is_set():
+        await asyncio.sleep(1.0)
+        active = order_manager.active_orders
+        if not active:
+            continue
+        for order in list(active):
+            try:
+                updated = await order_manager._broker.get_order_status(order.order_id)
+            except ValueError:
+                # Order not tracked by broker (rejected before storage)
+                order.status = OrderStatus.REJECTED
+                continue
+            except Exception:
+                logger.exception(
+                    "Failed to poll order status for %s", order.order_id[:8]
+                )
+                continue
+
+            if updated.status == OrderStatus.FILLED:
+                fill = BrokerFill(
+                    order_id=updated.order_id,
+                    symbol=updated.symbol,
+                    side=updated.side,
+                    quantity=updated.filled_quantity,
+                    price=updated.filled_avg_price,
+                    commission=abs(
+                        updated.filled_avg_price
+                        * updated.filled_quantity
+                        * portfolio.commission_pct
+                    ),
+                    timestamp=updated.filled_at or datetime.now(),
+                )
+                fill_event = order_manager.on_fill(fill)
+                engine._events.put(fill_event)
+            elif updated.status in (
+                OrderStatus.CANCELLED,
+                OrderStatus.REJECTED,
+                OrderStatus.EXPIRED,
+            ):
+                logger.warning(
+                    "Order %s %s: %s",
+                    updated.symbol,
+                    updated.side,
+                    updated.status.name,
+                )
+
+
+async def periodic_save(
+    stop_event: asyncio.Event,
+    save_interval: float,
+    engine: PaperTradingEngine,
+    storage: SQLStorage,
+    session_id: str,
+) -> None:
+    """Periodically save engine state to database."""
+    while not stop_event.is_set():
+        await asyncio.sleep(save_interval)
+        if engine.is_running:
+            state = engine.get_state()
+            storage.save_engine_state(session_id, state)
+            logger.info("Engine state saved to database")
+
+
+async def monitor_health(
+    stop_event: asyncio.Event,
+    engine: PaperTradingEngine,
+    interval: float = 60.0,
+) -> None:
+    """Periodically log engine status."""
+    while not stop_event.is_set():
+        await asyncio.sleep(interval)
+        stats = engine.get_statistics()
+        logger.info(
+            "bars=%d orders=%d fills=%d equity=$%.2f",
+            stats["bars_processed"],
+            stats["orders_submitted"],
+            stats["fills_processed"],
+            stats["equity"],
+        )
+
+
+# ---------------------------------------------------------------------------
+# Component builder
+# ---------------------------------------------------------------------------
+
+
 def build_components(
     config: BacktestConfig,
 ) -> tuple[
     LiveDataHandler,
-    SMACrossoverStrategy,
+    Strategy,
     Portfolio,
     OrderManager,
     RiskManager | None,
@@ -78,8 +239,15 @@ def build_components(
     )
 
     # Strategy
+    strategy_name = config.strategy.name
+    strategy_cls = STRATEGY_MAP.get(strategy_name)
+    if strategy_cls is None:
+        raise ValueError(
+            f"Unknown strategy '{strategy_name}'. "
+            f"Available: {list(STRATEGY_MAP.keys())}"
+        )
     params = dict(config.strategy.parameters)
-    strategy = SMACrossoverStrategy(symbols=symbols, parameters=params)
+    strategy = strategy_cls(symbols=symbols, parameters=params)
 
     # Position sizer
     sizer_params = config.sizing.parameters
@@ -169,49 +337,9 @@ def build_components(
     )
 
 
-def generate_synthetic_ticks(
-    symbols: list[str],
-    duration_minutes: int = 30,
-    bar_interval_seconds: int = 60,
-    ticks_per_second: float = 2.0,
-    base_prices: dict[str, float] | None = None,
-) -> list[Tick]:
-    """Generate synthetic ticks for demo paper trading.
-
-    Creates realistic-looking price movements with a sine wave trend
-    so SMA crossover strategies can generate signals.
-
-    Args:
-        symbols: List of symbols to generate ticks for
-        duration_minutes: Total duration of synthetic data
-        bar_interval_seconds: Interval between bars (unused, kept for API compat)
-        ticks_per_second: Number of ticks per second per symbol
-        base_prices: Optional symbol → base price mapping. Symbols not in
-            this dict default to 100.0.
-    """
-    known_prices = {"AAPL": 175.0, "MSFT": 380.0, "GOOGL": 140.0}
-    if base_prices is not None:
-        known_prices.update(base_prices)
-
-    ticks: list[Tick] = []
-    total_seconds = duration_minutes * 60
-    dt = 1.0 / ticks_per_second
-    start = datetime.now()
-
-    for i in range(int(total_seconds * ticks_per_second)):
-        t = i * dt
-        timestamp = start + timedelta(seconds=t)
-        for symbol in symbols:
-            base = known_prices.get(symbol, 100.0)
-            # Sine wave for crossover + small noise
-            trend = base * 0.03 * math.sin(2 * math.pi * t / (5 * 60))
-            noise = base * 0.001 * math.sin(t * 17.3 + hash(symbol) % 100)
-            price = base + trend + noise
-            ticks.append(
-                Tick(symbol=symbol, price=price, timestamp=timestamp, volume=100)
-            )
-
-    return ticks
+# ---------------------------------------------------------------------------
+# Main async entry point
+# ---------------------------------------------------------------------------
 
 
 async def run_paper_trading(config: BacktestConfig) -> None:
@@ -250,83 +378,50 @@ async def run_paper_trading(config: BacktestConfig) -> None:
 
     # Health monitor setup
     health_monitor.start()
-
-    def on_health_alert(report: "HealthMonitor") -> None:
-        logger.warning(
-            "Health alert: %s | warnings=%s errors=%s",
-            report.status.value,
-            report.warnings,
-            report.errors,
-        )
-
     health_monitor.add_alert_callback(on_health_alert)
-
-    # Wire alert publisher into health monitor
     health_monitor.add_alert_callback(alert_publisher.on_health_report)
 
     # Graceful shutdown
     stop_event = asyncio.Event()
-
     loop = asyncio.get_running_loop()
 
-    # Generate ticks for demo
     symbols = config.data.symbols
     live_cfg = config.live
-    ticks = generate_synthetic_ticks(
-        symbols=symbols,
-        duration_minutes=10,
-        bar_interval_seconds=live_cfg.data.bar_interval_seconds,
-    )
+    use_alpaca_feed = live_cfg.broker.broker_type == "alpaca"
+
+    # Set up Alpaca data feed or synthetic ticks
+    alpaca_feed: AlpacaDataFeed | None = None
+    ticks: list[Tick] = []
+    if use_alpaca_feed:
+        alpaca_feed = AlpacaDataFeed(
+            api_key=live_cfg.broker.api_key,
+            api_secret=live_cfg.broker.api_secret,
+            feed="iex",
+            max_reconnect_attempts=live_cfg.data.reconnect_attempts,
+        )
+
+        # Wire Alpaca ticks into the bar aggregator
+        alpaca_feed.add_tick_callback(aggregator.on_tick)
+
+        # Record bars for health monitor only when a bar completes
+        original_bar_callback = aggregator.bar_callback
+
+        def _on_bar_complete(bar: Bar) -> None:
+            if original_bar_callback is not None:
+                original_bar_callback(bar)
+            health_monitor.record_bar(datetime.now())
+
+        aggregator.bar_callback = _on_bar_complete
+    else:
+        ticks = generate_synthetic_ticks(
+            symbols=symbols,
+            duration_minutes=10,
+            bar_interval_seconds=live_cfg.data.bar_interval_seconds,
+        )
 
     save_interval = live_cfg.database.save_interval_seconds
 
-    async def feed_ticks() -> None:
-        """Feed synthetic ticks to the aggregator."""
-        bar_interval = live_cfg.data.bar_interval_seconds
-        ticks_per_bar = int(bar_interval * 2)  # 2 ticks/sec
-        batch_size = max(1, ticks_per_bar)
-
-        tick_delay = 0.05
-
-        for i in range(0, len(ticks), batch_size):
-            if stop_event.is_set():
-                break
-            batch = ticks[i : i + batch_size]
-            for tick in batch:
-                aggregator.on_tick(tick)
-
-            # Record bar for health monitor
-            health_monitor.record_bar(datetime.now())
-
-            await asyncio.sleep(tick_delay)
-
-        # Let engine process remaining events
-        await asyncio.sleep(0.5)
-        await engine.stop()
-        stop_event.set()
-
-    async def periodic_save() -> None:
-        """Periodically save engine state to database."""
-        while not stop_event.is_set():
-            await asyncio.sleep(min(save_interval, 5))  # faster for demo
-            if engine.is_running:
-                state = engine.get_state()
-                storage.save_engine_state(session_id, state)
-                logger.info("Engine state saved to database")
-
-    async def monitor_health() -> None:
-        """Periodically check health."""
-        while not stop_event.is_set():
-            await asyncio.sleep(5)
-            report = health_monitor.get_health_report()
-            logger.info(
-                "Health: %s | bars/min=%.1f latency=%.1fms fill_rate=%.0f%%",
-                report.status.value,
-                report.bars_per_minute,
-                report.event_latency_ms,
-                report.fill_rate * 100,
-            )
-
+    feed_mode = "Alpaca WebSocket (iex)" if use_alpaca_feed else "synthetic ticks"
     print("\n" + "=" * 60)
     print("  PAPER TRADING SESSION")
     print("=" * 60)
@@ -334,32 +429,110 @@ async def run_paper_trading(config: BacktestConfig) -> None:
     print(f"  Strategy: {config.strategy.name} {dict(config.strategy.parameters)}")
     print(f"  Capital:  ${config.execution.initial_capital:,.2f}")
     print(f"  Broker:   {live_cfg.broker.broker_type}")
+    print(f"  Data:     {feed_mode}")
     print(f"  Storage:  {live_cfg.database.db_url}")
     print("=" * 60 + "\n")
 
     # Graceful shutdown
+    gathered: asyncio.Future[None] | None = None
+
     def handle_signal() -> None:
         logger.info("Shutdown signal received")
         stop_event.set()
+        asyncio.ensure_future(engine.stop())
+        if gathered is not None and not gathered.done():
+            gathered.cancel()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
 
-    # Connect broker
+    # Connect broker and sync real account equity
     await order_manager._broker.connect()
 
-    tasks = [
+    if use_alpaca_feed:
+        account = await order_manager._broker.get_account_info()
+        real_equity = account["equity"]
+        if real_equity > 0:
+            portfolio.cash = real_equity
+            portfolio.initial_capital = real_equity
+            logger.info("Synced capital from Alpaca account: $%.2f", real_equity)
+
+        # Backfill historical bars so strategy has enough history immediately.
+        # Each backfilled bar = 1 row in get_latest_bars(), so we need
+        # at least lookback_period bars. Pick the Alpaca timeframe that
+        # best matches bar_interval_seconds.
+        lookback = config.strategy.parameters.get("lookback_period", 60)
+        bar_secs = live_cfg.data.bar_interval_seconds
+        alpaca_timeframe_map = {
+            60: "1Min",
+            300: "5Min",
+            900: "15Min",
+            3600: "1Hour",
+            86400: "1Day",
+        }
+        # Find the closest Alpaca timeframe <= bar_interval_seconds
+        best_tf = "1Min"
+        for secs, tf in sorted(alpaca_timeframe_map.items()):
+            if secs <= bar_secs:
+                best_tf = tf
+        hist_client = AlpacaHistoricalClient(
+            api_key=live_cfg.broker.api_key,
+            api_secret=live_cfg.broker.api_secret,
+            feed="iex",
+        )
+        try:
+            counts = await backfill_aggregator(
+                aggregator=aggregator,
+                client=hist_client,
+                symbols=symbols,
+                num_bars=lookback,
+                timeframe=best_tf,
+            )
+            total = sum(counts.values())
+            logger.info(
+                "Backfilled %d %s bars across %d symbols (lookback=%d)",
+                total,
+                best_tf,
+                len(counts),
+                lookback,
+            )
+        except Exception:
+            logger.exception("Historical backfill failed — starting without history")
+        finally:
+            await hist_client.close()
+
+    tasks: list[Any] = [
         engine.start(),
-        feed_ticks(),
-        periodic_save(),
-        monitor_health(),
+        periodic_save(stop_event, save_interval, engine, storage, session_id),
+        monitor_health(stop_event, engine, interval=live_cfg.data.bar_interval_seconds),
     ]
 
+    if use_alpaca_feed:
+        assert alpaca_feed is not None
+        tasks.append(run_alpaca_feed(alpaca_feed, symbols, stop_event))
+        tasks.append(poll_order_fills(stop_event, order_manager, portfolio, engine))
+    else:
+        tasks.append(
+            feed_synthetic_ticks(
+                ticks,
+                aggregator,
+                health_monitor,
+                live_cfg.data.bar_interval_seconds,
+                stop_event,
+                engine,
+            )
+        )
+
     try:
-        await asyncio.gather(*tasks)
+        gathered = asyncio.gather(*tasks)
+        await gathered
     except asyncio.CancelledError:
         pass
     finally:
+        # Stop engine if still running
+        if engine.is_running:
+            await engine.stop()
+
         # Final state save
         state = engine.get_state()
         storage.save_engine_state(session_id, state)
@@ -378,7 +551,11 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         # Final health report
         health_report = health_monitor.get_health_report()
 
-        # Disconnect
+        # Disconnect Alpaca feed if active
+        if alpaca_feed is not None:
+            await alpaca_feed.disconnect()
+
+        # Disconnect broker
         await order_manager._broker.disconnect()
 
         # Close storage

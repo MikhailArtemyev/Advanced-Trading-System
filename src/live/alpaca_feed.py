@@ -60,6 +60,8 @@ class AlpacaDataFeed(LiveDataFeed):
         self._reconnect_count = 0
         self._should_run = False
         self._authenticated = False
+        self._last_data_time: datetime | None = None
+        self._stale_timeout = 90.0  # seconds with no data before reconnect
 
     @property
     def authenticated(self) -> bool:
@@ -176,6 +178,7 @@ class AlpacaDataFeed(LiveDataFeed):
         while self._should_run:
             try:
                 if self._ws is None or self._ws.closed:
+                    logger.warning("WebSocket is closed/None, reconnecting")
                     await self._reconnect()
                     continue
 
@@ -197,6 +200,15 @@ class AlpacaDataFeed(LiveDataFeed):
                     await self._reconnect()
 
             except TimeoutError:
+                # Check for stale connection — no data for too long
+                if self._last_data_time is not None:
+                    elapsed = (
+                        datetime.now(tz=UTC) - self._last_data_time
+                    ).total_seconds()
+                    if elapsed > self._stale_timeout:
+                        logger.warning("No data for %.0fs, forcing reconnect", elapsed)
+                        await self._reconnect()
+                        continue
                 logger.debug("Alpaca WebSocket receive timeout, continuing")
             except asyncio.CancelledError:
                 raise
@@ -228,14 +240,17 @@ class AlpacaDataFeed(LiveDataFeed):
             if msg_type == "t":
                 tick = _parse_trade(item)
                 if tick is not None:
+                    self._last_data_time = datetime.now(tz=UTC)
                     self._on_tick(tick)
             elif msg_type == "q":
                 tick = _parse_quote(item)
                 if tick is not None:
+                    self._last_data_time = datetime.now(tz=UTC)
                     self._on_tick(tick)
             elif msg_type == "b":
                 tick = _parse_bar(item)
                 if tick is not None:
+                    self._last_data_time = datetime.now(tz=UTC)
                     self._on_tick(tick)
             elif msg_type in ("success", "error", "subscription"):
                 logger.debug("Alpaca control message: %s", msg_type)
@@ -301,12 +316,16 @@ class AlpacaDataFeed(LiveDataFeed):
 
             self._status = FeedStatus.CONNECTED
             self._reconnect_count = 0
+            self._last_data_time = datetime.now(tz=UTC)
 
             # Re-subscribe
             if self._symbols:
                 await self.subscribe(list(self._symbols))
 
-            logger.info("Alpaca data feed reconnected")
+            logger.info(
+                "Alpaca data feed reconnected (subscribed to %d symbols)",
+                len(self._symbols),
+            )
         except Exception:
             logger.exception("Alpaca reconnection failed")
             self._status = FeedStatus.ERROR
