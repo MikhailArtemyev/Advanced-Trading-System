@@ -19,8 +19,8 @@ data:
     - ROKU
   data_source: "alpaca"
   data_path: "data/alpaca_cache"
-  start_date: "2026-03-12"
-  end_date: "2026-03-13"
+  start_date: "2026-03-09"
+  end_date: "2026-03-14"
 
 execution:
   initial_capital: 100000.0
@@ -32,11 +32,15 @@ strategy:
   parameters:
     base_strategy: "mean_reversion"
     model_path: "models/ml_filter.joblib"
-    threshold: 0.7
+    threshold: 0.65
     lookback_period: 20
     entry_threshold: 2.0
     exit_threshold: 0.5
     max_holding_period: 10
+    stop_loss_atr: 1.5
+    take_profit_atr: 2.5
+    adx_max: 25.0
+    atr_period: 14
 
 sizing:
   method: "fixed_fraction"

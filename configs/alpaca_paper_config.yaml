@@ -29,12 +29,19 @@ execution:
   slippage_pct: 0.0003
 
 strategy:
-  name: "mean_reversion"
+  name: "ml_filtered"
   parameters:
+    base_strategy: "mean_reversion"
+    model_path: "models/ml_filter.joblib"
+    threshold: 0.65
     lookback_period: 20
     entry_threshold: 2.0
     exit_threshold: 0.5
     max_holding_period: 10
+    stop_loss_atr: 1.5
+    take_profit_atr: 3.0
+    adx_max: 25.0
+    atr_period: 14
 
 sizing:
   method: "fixed_fraction"
