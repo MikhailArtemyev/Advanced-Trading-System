@@ -108,6 +108,9 @@ def main() -> None:
             exit_threshold=params.get("exit_threshold", 0.5),
             max_holding_period=params.get("max_holding_period", 10),
             cost_bps=30,
+            stop_loss_atr=params.get("stop_loss_atr", 1.5),
+            take_profit_atr=params.get("take_profit_atr", 2.5),
+            atr_period=params.get("atr_period", 14),
         )
 
         if not labeled.empty:
