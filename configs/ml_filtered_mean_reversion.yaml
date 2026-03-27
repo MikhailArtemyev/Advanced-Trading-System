@@ -1,5 +1,5 @@
-# Alpaca Paper Trading Configuration
-# Mean-Variance Optimized MultiAsset SMA — best Sharpe (0.683), +44.6% return
+# ML-filtered mean reversion on 5-minute bars
+# XGBoost gates entry signals, blocking predicted losers
 
 data:
   symbols:
@@ -8,29 +8,31 @@ data:
     - GOOGL
     - AMZN
     - META
-    # High volatility
     - NVDA
     - TSLA
     - MARA
     - COIN
     - SMCI
-    # Moderate volatility
     - AMD
     - SHOP
     - PLTR
     - ROKU
-  data_source: ""
-  start_date: ""
-  end_date: ""
+  data_source: "alpaca"
+  data_path: "data/alpaca_cache"
+  start_date: "2026-03-12"
+  end_date: "2026-03-13"
 
 execution:
-  initial_capital: 10000
+  initial_capital: 100000.0
   commission_pct: 0.001
-  slippage_pct: 0.0003
+  slippage_pct: 0.0005
 
 strategy:
-  name: "mean_reversion"
+  name: "ml_filtered"
   parameters:
+    base_strategy: "mean_reversion"
+    model_path: "models/ml_filter.joblib"
+    threshold: 0.7
     lookback_period: 20
     entry_threshold: 2.0
     exit_threshold: 0.5
@@ -63,7 +65,3 @@ live:
   broker:
     broker_type: "alpaca"
     paper_mode: true
-  database:
-    enabled: false
-    db_url: "sqlite:///trading.db"
-    save_interval_seconds: 300

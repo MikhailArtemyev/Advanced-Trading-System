@@ -10,147 +10,28 @@ import argparse
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Add project root to path so imports work when run directly
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts.utils import (
+    build_data_handler,
+    build_optimizer,
+    build_position_sizer,
+    build_risk_manager,
+    build_strategy,
+)
 from src.backtest.engine import BacktestEngine
-from src.config import BacktestConfig, load_config
-from src.data.data_handler import DataHandler, HistoricalCSVDataHandler
-from src.data.yfinance_handler import YFinanceDataHandler
+from src.config import load_config
 from src.execution.execution_handler import ExecutionHandler
-from src.optimization.base_optimizer import PortfolioOptimizer
-from src.optimization.mean_variance import MeanVarianceOptimizer
-from src.optimization.risk_parity import RiskParityOptimizer
 from src.performance.metrics import PerformanceTracker
 from src.performance.visualization import create_full_report
 from src.portfolio.portfolio import Portfolio
-from src.risk.position_sizer import (
-    FixedFractionSizer,
-    KellyCriterionSizer,
-    PositionSizer,
-    VolatilityBasedSizer,
-)
-from src.risk.risk_manager import RiskLimits, RiskManager
 from src.storage.null_storage import NullStorage
 from src.storage.sql_storage import SQLStorage
-from src.strategy.base_strategy import Strategy
-from src.strategy.mean_reversion import MeanReversionStrategy
-from src.strategy.momentum import MomentumStrategy
-from src.strategy.multi_asset_sma import MultiAssetSMAStrategy
-from src.strategy.pairs_trading import PairsTradingStrategy
-from src.strategy.sma_crossover import SMACrossoverStrategy
-
-
-def build_data_handler(config: BacktestConfig) -> DataHandler:
-    """Build data handler based on config.data.data_source."""
-    if config.data.data_source == "yfinance":
-        return YFinanceDataHandler(
-            symbols=config.data.symbols,
-            start_date=config.data.start_date,
-            end_date=config.data.end_date,
-            cache_dir=config.data.data_path or "data/cache",
-        )
-    elif config.data.data_source == "csv":
-        return HistoricalCSVDataHandler(
-            data_path=config.data.data_path or "data/sample",
-            symbols=config.data.symbols,
-            start_date=config.data.start_date,
-            end_date=config.data.end_date,
-        )
-    else:
-        msg = f"Unknown data_source: {config.data.data_source}"
-        raise ValueError(msg)
-
-
-def build_position_sizer(config: BacktestConfig) -> PositionSizer:
-    """Build position sizer based on config.sizing."""
-    method = config.sizing.method
-    params = config.sizing.parameters
-
-    if method == "fixed_fraction":
-        return FixedFractionSizer(**params)
-    elif method == "volatility":
-        return VolatilityBasedSizer(**params)
-    elif method == "kelly":
-        return KellyCriterionSizer(**params)
-    else:
-        msg = f"Unknown sizing method: {method}"
-        raise ValueError(msg)
-
-
-def build_risk_manager(config: BacktestConfig) -> RiskManager | None:
-    """Build risk manager based on config.risk. Returns None if disabled."""
-    if not config.risk.enabled:
-        return None
-
-    limits = RiskLimits(
-        max_position_pct=config.risk.max_position_pct,
-        max_portfolio_exposure_pct=config.risk.max_portfolio_exposure_pct,
-        max_daily_loss_pct=config.risk.max_daily_loss_pct,
-        max_drawdown_pct=config.risk.max_drawdown_pct,
-        max_open_positions=config.risk.max_open_positions,
-        max_orders_per_day=config.risk.max_orders_per_day,
-    )
-    return RiskManager(limits=limits)
-
-
-def build_optimizer(config: BacktestConfig) -> PortfolioOptimizer | None:
-    """Build portfolio optimizer based on config.optimization.method.
-
-    Returns None if method is 'none'.
-    """
-    method = config.optimization.method
-    params = config.optimization.parameters
-
-    if method == "none":
-        return None
-    elif method == "mean_variance":
-        return MeanVarianceOptimizer(**params)
-    elif method == "risk_parity":
-        return RiskParityOptimizer(**params)
-    else:
-        msg = f"Unknown optimization method: {method}"
-        raise ValueError(msg)
-
-
-def build_strategy(
-    config: BacktestConfig,
-    optimizer: PortfolioOptimizer | None = None,
-    data_handler: DataHandler | None = None,
-) -> Strategy:
-    """Build strategy based on config and optimizer.
-
-    Auto-selects MultiAssetSMAStrategy when multiple symbols AND an
-    optimizer are configured (for sma_crossover).
-    """
-    symbols = config.data.symbols
-    params = dict(config.strategy.parameters)
-    name = config.strategy.name
-
-    if name == "momentum":
-        return MomentumStrategy(symbols=symbols, parameters=params)
-
-    if name == "mean_reversion":
-        return MeanReversionStrategy(symbols=symbols, parameters=params)
-
-    if name == "pairs_trading":
-        return PairsTradingStrategy(symbols=symbols, parameters=params)
-
-    # Default: sma_crossover (with multi-asset variant when optimizer present)
-    if len(symbols) > 1 and optimizer is not None:
-        params.setdefault(
-            "rebalance_frequency", config.optimization.rebalance_frequency
-        )
-        return MultiAssetSMAStrategy(
-            symbols=symbols,
-            parameters=params,
-            optimizer=optimizer,
-        )
-
-    return SMACrossoverStrategy(
-        symbols=symbols,
-        parameters=params,
-    )
 
 
 def main() -> None:

@@ -115,6 +115,10 @@ paper:
 paper-alpaca:
 	$(PYTHON) ./scripts/run_paper_trading.py --config configs/alpaca_paper_config.yaml
 
+# Train ML signal filter (requires .env with Alpaca API keys)
+train-ml:
+	$(PYTHON) ./scripts/train_ml_filter.py --config configs/backtest_intraday_5min.yaml --output models/ml_filter.joblib
+
 # Full report: run ALL configs, generate report + charts
 report: download-data
 	$(PYTHON) ./scripts/run_full_report.py

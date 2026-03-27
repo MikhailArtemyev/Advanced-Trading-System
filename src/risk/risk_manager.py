@@ -155,12 +155,16 @@ class RiskManager:
                 f"{self.limits.max_orders_per_day}"
             )
 
-        # Check 4: Open position count (BUY only)
-        if order.side == OrderSide.BUY:
+        # Determine if this order is closing/reducing an existing position
+        _existing_qty = self._get_position_quantity(positions, order.symbol)
+        is_position_close = (order.side == OrderSide.BUY and _existing_qty < 0) or (
+            order.side == OrderSide.SELL and _existing_qty > 0
+        )
+
+        # Check 4: Open position count (BUY only, new positions only)
+        if order.side == OrderSide.BUY and not is_position_close:
             open_count = self._count_open_positions(positions)
-            # Check if this is a new position (no existing holding)
-            existing_qty = self._get_position_quantity(positions, order.symbol)
-            if existing_qty == 0 and open_count >= self.limits.max_open_positions:
+            if _existing_qty == 0 and open_count >= self.limits.max_open_positions:
                 rejection_reasons.append(
                     f"Max open positions: {open_count} >= "
                     f"{self.limits.max_open_positions}"
@@ -175,9 +179,9 @@ class RiskManager:
                 warnings=warnings,
             )
 
-        # Check 5: Position concentration (BUY only, can adjust)
+        # Check 5: Position concentration (BUY only, new/increase only)
         working_quantity = order.quantity
-        if order.side == OrderSide.BUY and current_price > 0:
+        if order.side == OrderSide.BUY and current_price > 0 and not is_position_close:
             existing_value = (
                 self._get_position_quantity(positions, order.symbol) * current_price
             )
@@ -203,8 +207,13 @@ class RiskManager:
                         )
                         working_quantity = new_qty
 
-        # Check 6: Total portfolio exposure (BUY only, can adjust)
-        if order.side == OrderSide.BUY and current_price > 0 and not rejection_reasons:
+        # Check 6: Total portfolio exposure (BUY only, new/increase only)
+        if (
+            order.side == OrderSide.BUY
+            and current_price > 0
+            and not rejection_reasons
+            and not is_position_close
+        ):
             total_exposure = self._get_total_exposure(positions)
             proposed_exposure = total_exposure + working_quantity * current_price
             max_exposure = equity * self.limits.max_portfolio_exposure_pct
