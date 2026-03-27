@@ -436,7 +436,9 @@ class TestLiveDataConfig:
 
 
 class TestBrokerConfig:
-    def test_defaults(self):
+    def test_defaults(self, monkeypatch):
+        monkeypatch.delenv("ALPACA_API_KEY", raising=False)
+        monkeypatch.delenv("ALPACA_API_SECRET", raising=False)
         config = BrokerConfig()
         assert config.broker_type == "paper"
         assert config.api_key == ""

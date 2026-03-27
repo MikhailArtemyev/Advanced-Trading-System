@@ -21,7 +21,6 @@ from src.events.event import (
     FillEvent,
     MarketEvent,
     OrderEvent,
-    OrderSide,
     SignalEvent,
 )
 from src.events.queue import EventQueue
@@ -182,6 +181,19 @@ class PaperTradingEngine:
 
     async def _handle_order(self, event: OrderEvent) -> None:
         """Check order with risk manager, then submit to broker."""
+        # Skip if there's already an active (unfilled) order for this symbol
+        active_for_symbol = [
+            o for o in self._order_manager.active_orders if o.symbol == event.symbol
+        ]
+        if active_for_symbol:
+            logger.debug(
+                "Skipping %s %s — %d active order(s) pending",
+                event.side.name,
+                event.symbol,
+                len(active_for_symbol),
+            )
+            return
+
         if self._risk_manager is not None:
             bars = self._data_handler.get_latest_bars(event.symbol, 1)
             if bars.empty:
@@ -245,8 +257,9 @@ class PaperTradingEngine:
         self._portfolio.on_fill(event)
         self.fills_processed += 1
 
-        # Update risk manager daily P&L on SELL fills
-        if self._risk_manager is not None and event.side == OrderSide.SELL:
+        # Check trade history for P&L on closing trades
+        pnl = 0.0
+        try:
             trade_history = self._portfolio.get_trade_history()
             if trade_history:
                 latest = trade_history[-1]
@@ -254,7 +267,24 @@ class PaperTradingEngine:
                     pnl = float(latest.get("pnl", 0.0))
                 else:
                     pnl = float(getattr(latest, "pnl", 0.0))
-                self._risk_manager.update_daily_pnl(pnl, event.timestamp)
+        except (TypeError, AttributeError):
+            pass
+
+        if pnl != 0.0:
+            sign = "+" if pnl > 0 else ""
+            logger.info(
+                "Closed %s %d %s @ $%.2f  P&L: %s$%.2f",
+                event.side.name,
+                event.quantity,
+                event.symbol,
+                event.fill_price,
+                sign,
+                pnl,
+            )
+
+        # Update risk manager daily P&L on closing fills
+        if self._risk_manager is not None and pnl != 0.0:
+            self._risk_manager.update_daily_pnl(pnl, event.timestamp)
 
         # Sync position back to strategy
         if hasattr(self._strategy, "update_position"):
