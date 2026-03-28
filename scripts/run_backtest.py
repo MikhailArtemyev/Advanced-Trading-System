@@ -2,8 +2,8 @@
 """Main script to run backtests.
 
 Usage:
-    python -m scripts.run_backtest --config configs/backtest_config.yaml
-    python scripts/run_backtest.py --config configs/backtest_config.yaml
+    python -m scripts.run_backtest --config configs/backtest/backtest_config.yaml
+    python scripts/run_backtest.py --config configs/backtest/backtest_config.yaml
 """
 
 import argparse
@@ -120,8 +120,6 @@ def main() -> None:
         print("\nRisk Summary:")
         print(f"  Rejected Orders:  {results['rejected_orders']}")
         print(f"  Halted:           {risk_manager.is_halted}")
-        if risk_manager.is_halted:
-            print(f"  Halt Reason:      {risk_manager.halt_reason}")
 
     # Portfolio summary
     summary = portfolio.get_portfolio_summary()
