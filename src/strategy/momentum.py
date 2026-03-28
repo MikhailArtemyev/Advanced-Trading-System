@@ -6,6 +6,10 @@ every ``rebalance_frequency`` bars.
 
 Per-position risk management: percentage trailing stop-loss cuts losers
 between rebalances.  Optional regime filter and minimum return threshold.
+
+Market crash detector: monitors short-term average return across the
+universe every bar.  On sharp drops, exits all positions immediately
+and waits for recovery before re-entering (fast out, slow in).
 """
 
 from datetime import datetime
@@ -35,12 +39,14 @@ class MomentumStrategy(Strategy):
         trailing_stop_pct: Trailing stop as a percentage (default 0,
             disabled). E.g. 0.08 = exit if price drops 8% from its
             high since entry. Checked every bar.
-        portfolio_stop_pct: Portfolio-level circuit breaker (default 0,
-            disabled). E.g. 0.10 = if estimated portfolio value drops
-            10% from its peak, exit all positions and pause for
-            ``cooldown_bars`` bars.
-        cooldown_bars: Bars to stay in cash after portfolio stop
-            triggers (default 10).
+        crash_lookback: Short-term bars to detect market crash (default 0,
+            disabled). E.g. 2 = check average 2-day return across
+            the universe.
+        crash_threshold: Average return below this triggers emergency
+            exit (default -0.03). E.g. -0.03 = exit if the universe
+            average drops 3% over ``crash_lookback`` bars.
+        recovery_bars: Bars to stay in cash after crash detected
+            (default 10). Slow re-entry prevents whipsaw.
     """
 
     def __init__(
@@ -58,8 +64,9 @@ class MomentumStrategy(Strategy):
         self.min_return: float = self.parameters.get("min_return", 0.0)
         self.regime_sma_period: int = self.parameters.get("regime_sma_period", 0)
         self.trailing_stop_pct: float = self.parameters.get("trailing_stop_pct", 0)
-        self.portfolio_stop_pct: float = self.parameters.get("portfolio_stop_pct", 0)
-        self.cooldown_bars: int = self.parameters.get("cooldown_bars", 10)
+        self.crash_lookback: int = self.parameters.get("crash_lookback", 0)
+        self.crash_threshold: float = self.parameters.get("crash_threshold", -0.03)
+        self.recovery_bars: int = self.parameters.get("recovery_bars", 10)
 
         if self.lookback_period < 2:
             raise ValueError("lookback_period must be at least 2")
@@ -72,8 +79,7 @@ class MomentumStrategy(Strategy):
 
         self._bar_count: int = 0
         self._high_water: dict[str, float] = {}
-        # Portfolio-level circuit breaker state
-        self._portfolio_peak: float = 0.0
+        # Market crash detector state
         self._cooldown_until: int = 0  # bar count when cooldown ends
 
     def calculate_signals(
@@ -87,20 +93,13 @@ class MomentumStrategy(Strategy):
         if self._bar_count < self.min_bars:
             return []
 
-        # Portfolio-level circuit breaker
-        if self.portfolio_stop_pct > 0:
-            portfolio_value = self._estimate_portfolio_value(data_handler)
-            if portfolio_value > self._portfolio_peak:
-                self._portfolio_peak = portfolio_value
-            if self._portfolio_peak > 0:
-                dd = (self._portfolio_peak - portfolio_value) / self._portfolio_peak
-                if dd >= self.portfolio_stop_pct:
-                    # Exit everything and start cooldown
-                    self._cooldown_until = self._bar_count + self.cooldown_bars
-                    self._portfolio_peak = 0.0  # Reset peak after cooldown
-                    return self._exit_all(timestamp)
+        # Market crash detector — fast exit, slow re-entry
+        if self.crash_lookback > 0:
+            if self._detect_crash(data_handler):
+                self._cooldown_until = self._bar_count + self.recovery_bars
+                return self._exit_all(timestamp)
 
-        # During cooldown: stay flat
+        # During cooldown after crash: stay flat
         if self._bar_count < self._cooldown_until:
             return self._exit_all(timestamp)
 
@@ -258,22 +257,29 @@ class MomentumStrategy(Strategy):
         avg_sma = np.mean(sma_list)
         return bool(avg_close < avg_sma)
 
-    def _estimate_portfolio_value(self, data_handler: DataHandler) -> float:
-        """Estimate current portfolio value from position prices.
+    def _detect_crash(self, data_handler: DataHandler) -> bool:
+        """Detect a market crash via short-term average return.
 
-        Returns sum of abs(position * price) for all open positions.
-        Used for the portfolio-level circuit breaker.
+        Computes the average return across the universe over
+        ``crash_lookback`` bars.  Returns True if the average return
+        is below ``crash_threshold``.
         """
-        value = 0.0
+        n = self.crash_lookback
+        returns: list[float] = []
+
         for symbol in self.symbols:
-            pos = self.current_positions.get(symbol, 0)
-            if pos == 0:
+            bars = data_handler.get_latest_bars(symbol, n + 1)
+            if len(bars) < n + 1:
                 continue
-            bars = data_handler.get_latest_bars(symbol, 1)
-            if bars.empty:
-                continue
-            value += abs(pos) * float(bars["close"].iloc[-1])
-        return value
+            closes = bars["close"].values
+            ret = (closes[-1] - closes[-(n + 1)]) / closes[-(n + 1)]
+            returns.append(ret)
+
+        if len(returns) < 3:
+            return False
+
+        avg_return = float(np.mean(returns))
+        return avg_return <= self.crash_threshold
 
     def _exit_all(self, timestamp: datetime) -> list[SignalEvent]:
         """Exit all open positions."""
