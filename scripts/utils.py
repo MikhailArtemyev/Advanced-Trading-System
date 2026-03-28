@@ -51,7 +51,7 @@ def build_data_handler(config: BacktestConfig) -> DataHandler:
         )
     elif config.data.data_source == "alpaca":
         bar_secs = config.live.data.bar_interval_seconds
-        tf_map = {60: "1Min", 300: "5Min", 900: "15Min", 3600: "1Hour"}
+        tf_map = {60: "1Min", 300: "5Min", 900: "15Min", 3600: "1Hour", 86400: "1Day"}
         timeframe = tf_map.get(bar_secs, "5Min")
         return AlpacaBarDataHandler(
             symbols=config.data.symbols,
