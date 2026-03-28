@@ -43,13 +43,13 @@ from src.validation.deflated_sharpe import deflated_sharpe_ratio
 # Default configs to compare (used when no CLI args given)
 # Each entry: (display_name, config_path)
 _DEFAULT_CONFIGS = [
-    ("Baseline (Default)", "configs/backtest_config.yaml"),
-    ("Baseline (No Risk)", "configs/backtest_baseline.yaml"),
-    ("Conservative Risk", "configs/conservative_risk.yaml"),
-    ("Kelly Sizing", "configs/kelly_sizing.yaml"),
-    ("Volatility Sizing", "configs/backtest_phase2_vol.yaml"),
-    ("Mean-Var Optimized", "configs/backtest_phase2_meanvar.yaml"),
-    ("Risk Parity Optimized", "configs/backtest_phase2_riskparity.yaml"),
+    ("Baseline (Default)", "configs/backtest/backtest_config.yaml"),
+    ("Baseline (No Risk)", "configs/backtest/backtest_baseline.yaml"),
+    ("Conservative Risk", "configs/backtest/conservative_risk.yaml"),
+    ("Kelly Sizing", "configs/backtest/kelly_sizing.yaml"),
+    ("Volatility Sizing", "configs/backtest/backtest_phase2_vol.yaml"),
+    ("Mean-Var Optimized", "configs/backtest/backtest_phase2_meanvar.yaml"),
+    ("Risk Parity Optimized", "configs/backtest/backtest_phase2_riskparity.yaml"),
 ]
 
 

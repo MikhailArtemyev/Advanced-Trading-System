@@ -38,6 +38,11 @@ data/
 *.h5
 *.hdf5
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
 # Environment variables
 .env
 .env.local

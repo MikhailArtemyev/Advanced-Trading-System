@@ -190,7 +190,7 @@ class TestLoadConfig:
 
     def test_load_actual_config_file(self):
         """Test loading the actual config file in configs/."""
-        config_path = Path(__file__).parent.parent / "configs" / "backtest_config.yaml"
+        config_path = Path(__file__).parent.parent / "configs" / "backtest" / "backtest_config.yaml"
         assert config_path.exists(), "backtest_config.yaml must exist"
         config = load_config(str(config_path))
         assert config.data.symbols == ["AAPL", "MSFT", "GOOGL"]

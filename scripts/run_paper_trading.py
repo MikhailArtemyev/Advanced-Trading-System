@@ -8,7 +8,7 @@ Supports graceful shutdown (Ctrl+C), periodic state saves to SQLite,
 and optional state recovery from the database.
 
 Usage:
-    python scripts/run_paper_trading.py --config configs/paper_trading_config.yaml
+    python scripts/run_paper_trading.py --config configs/live/paper_trading_config.yaml
 """
 
 import argparse
@@ -581,7 +581,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run paper trading session")
     parser.add_argument(
         "--config",
-        default="configs/paper_trading_config.yaml",
+        default="configs/live/paper_trading_config.yaml",
         help="Path to config YAML",
     )
     args = parser.parse_args()

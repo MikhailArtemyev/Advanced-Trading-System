@@ -3,8 +3,6 @@ data:
     - AAPL
     - MSFT
     - GOOGL
-    - AMZN
-    - META
   start_date: "2020-01-01"
   end_date: "2024-12-31"
   data_source: "csv"
@@ -28,7 +26,7 @@ sizing:
 
 risk:
   enabled: true
-  max_position_pct: 0.40
+  max_position_pct: 0.30
   max_portfolio_exposure_pct: 1.0
   max_daily_loss_pct: 0.03
   max_drawdown_pct: 0.15
@@ -36,8 +34,7 @@ risk:
   max_orders_per_day: 100
 
 optimization:
-  method: "mean_variance"
+  method: "risk_parity"
   rebalance_frequency: 20      # Reoptimize every 20 bars
   parameters:
-    target: "max_sharpe"        # max_sharpe or min_variance
     max_weight: 0.40            # Max 40% in a single asset
