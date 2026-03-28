@@ -55,12 +55,12 @@ strategy:
   name: "momentum"
   parameters:
     lookback_period: 20
-    top_n: 3
+    top_n: 5
     bottom_n: 0
     rebalance_frequency: 5
     min_bars: 25
-    min_return: 0.01
-    regime_sma_period: 50
+    min_return: 0.0
+    regime_sma_period: 0
 
 sizing:
   method: "volatility"
