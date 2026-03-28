@@ -56,11 +56,12 @@ strategy:
   parameters:
     lookback_period: 20
     top_n: 5
-    bottom_n: 0
+    bottom_n: 3
     rebalance_frequency: 5
     min_bars: 25
     min_return: 0.0
     regime_sma_period: 0
+    trailing_stop_pct: 0.08
 
 sizing:
   method: "volatility"
