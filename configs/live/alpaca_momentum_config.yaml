@@ -43,9 +43,8 @@ data:
     - MARA
   data_source: "alpaca"
   data_path: "data/alpaca_cache"
-  start_date: "2025-03-28"
+  start_date: "2021-03-28"
   end_date: "2026-03-28"
-  resample_n: 5  # 1-hour bars aggregated to 5-hour bars
 
 execution:
   initial_capital: 100000
@@ -55,11 +54,13 @@ execution:
 strategy:
   name: "momentum"
   parameters:
-    lookback_period: 33
-    top_n: 5
+    lookback_period: 20
+    top_n: 3
     bottom_n: 0
-    rebalance_frequency: 33
-    min_bars: 35
+    rebalance_frequency: 5
+    min_bars: 25
+    min_return: 0.01
+    regime_sma_period: 50
 
 sizing:
   method: "volatility"
@@ -87,7 +88,7 @@ optimization:
 
 live:
   data:
-    bar_interval_seconds: 3600
+    bar_interval_seconds: 86400
   broker:
     broker_type: "alpaca"
     paper_mode: true
