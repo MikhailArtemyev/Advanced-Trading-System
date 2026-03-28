@@ -3,10 +3,16 @@
 Ranks symbols by trailing return over a lookback window, then goes long
 the top N performers (and optionally short the bottom N).  Rebalances
 every ``rebalance_frequency`` bars.
+
+Includes a regime filter: skips entries when the equal-weighted universe
+average is below its SMA, and a minimum return threshold so the strategy
+goes to cash instead of buying "the least bad" stocks in a downturn.
 """
 
 from datetime import datetime
 from typing import Any
+
+import numpy as np
 
 from ..data.data_handler import DataHandler
 from ..events.event import SignalEvent, SignalType
@@ -23,6 +29,12 @@ class MomentumStrategy(Strategy):
             i.e. long-only).
         rebalance_frequency: Bars between rebalances (default 5).
         min_bars: Minimum bars before any trading (default 30).
+        min_return: Minimum trailing return to qualify for long entry
+            (default 0.0). Stocks below this threshold are skipped
+            even if ranked in top_n.
+        regime_sma_period: SMA period for the regime filter (default 0,
+            disabled).  When > 0, entries are blocked if the equal-weighted
+            average close of all symbols is below its SMA.
     """
 
     def __init__(
@@ -37,6 +49,8 @@ class MomentumStrategy(Strategy):
         self.bottom_n: int = self.parameters.get("bottom_n", 0)
         self.rebalance_frequency: int = self.parameters.get("rebalance_frequency", 5)
         self.min_bars: int = self.parameters.get("min_bars", 30)
+        self.min_return: float = self.parameters.get("min_return", 0.0)
+        self.regime_sma_period: int = self.parameters.get("regime_sma_period", 0)
 
         if self.lookback_period < 2:
             raise ValueError("lookback_period must be at least 2")
@@ -62,6 +76,9 @@ class MomentumStrategy(Strategy):
         if self._bar_count % self.rebalance_frequency != 0:
             return []
 
+        # Regime filter: check if market is in a downtrend
+        risk_off = self._is_risk_off(data_handler)
+
         # Compute trailing returns for each symbol
         returns: dict[str, float] = {}
         for symbol in self.symbols:
@@ -77,8 +94,19 @@ class MomentumStrategy(Strategy):
 
         ranked = sorted(returns.keys(), key=lambda s: returns[s], reverse=True)
 
-        long_symbols = set(ranked[: self.top_n])
-        short_symbols = set(ranked[-self.bottom_n :]) if self.bottom_n > 0 else set()
+        if risk_off:
+            # Bear regime: exit everything, don't enter
+            long_symbols: set[str] = set()
+            short_symbols: set[str] = set()
+        else:
+            # Filter top_n by min_return threshold
+            long_symbols = set()
+            for s in ranked[: self.top_n]:
+                if returns[s] >= self.min_return:
+                    long_symbols.add(s)
+            short_symbols = (
+                set(ranked[-self.bottom_n :]) if self.bottom_n > 0 else set()
+            )
 
         signals: list[SignalEvent] = []
 
@@ -114,3 +142,31 @@ class MomentumStrategy(Strategy):
                     )
 
         return signals
+
+    def _is_risk_off(self, data_handler: DataHandler) -> bool:
+        """Check if the market regime is bearish.
+
+        Computes an equal-weighted average close across all symbols and
+        compares it to its SMA.  Returns True (risk-off) if the average
+        is below the SMA.
+        """
+        if self.regime_sma_period <= 0:
+            return False
+
+        n_bars = self.regime_sma_period
+        closes_list: list[float] = []
+        sma_list: list[float] = []
+
+        for symbol in self.symbols:
+            bars = data_handler.get_latest_bars(symbol, n_bars)
+            if len(bars) < n_bars:
+                continue
+            closes_list.append(float(bars["close"].iloc[-1]))
+            sma_list.append(float(np.mean(bars["close"].values)))
+
+        if not closes_list:
+            return False
+
+        avg_close = np.mean(closes_list)
+        avg_sma = np.mean(sma_list)
+        return bool(avg_close < avg_sma)
