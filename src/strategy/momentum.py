@@ -4,9 +4,8 @@ Ranks symbols by trailing return over a lookback window, then goes long
 the top N performers (and optionally short the bottom N).  Rebalances
 every ``rebalance_frequency`` bars.
 
-Includes a regime filter: skips entries when the equal-weighted universe
-average is below its SMA, and a minimum return threshold so the strategy
-goes to cash instead of buying "the least bad" stocks in a downturn.
+Per-position risk management: percentage trailing stop-loss cuts losers
+between rebalances.  Optional regime filter and minimum return threshold.
 """
 
 from datetime import datetime
@@ -30,11 +29,18 @@ class MomentumStrategy(Strategy):
         rebalance_frequency: Bars between rebalances (default 5).
         min_bars: Minimum bars before any trading (default 30).
         min_return: Minimum trailing return to qualify for long entry
-            (default 0.0). Stocks below this threshold are skipped
-            even if ranked in top_n.
+            (default 0.0). Stocks below this threshold are skipped.
         regime_sma_period: SMA period for the regime filter (default 0,
-            disabled).  When > 0, entries are blocked if the equal-weighted
-            average close of all symbols is below its SMA.
+            disabled).
+        trailing_stop_pct: Trailing stop as a percentage (default 0,
+            disabled). E.g. 0.08 = exit if price drops 8% from its
+            high since entry. Checked every bar.
+        portfolio_stop_pct: Portfolio-level circuit breaker (default 0,
+            disabled). E.g. 0.10 = if estimated portfolio value drops
+            10% from its peak, exit all positions and pause for
+            ``cooldown_bars`` bars.
+        cooldown_bars: Bars to stay in cash after portfolio stop
+            triggers (default 10).
     """
 
     def __init__(
@@ -51,6 +57,9 @@ class MomentumStrategy(Strategy):
         self.min_bars: int = self.parameters.get("min_bars", 30)
         self.min_return: float = self.parameters.get("min_return", 0.0)
         self.regime_sma_period: int = self.parameters.get("regime_sma_period", 0)
+        self.trailing_stop_pct: float = self.parameters.get("trailing_stop_pct", 0)
+        self.portfolio_stop_pct: float = self.parameters.get("portfolio_stop_pct", 0)
+        self.cooldown_bars: int = self.parameters.get("cooldown_bars", 10)
 
         if self.lookback_period < 2:
             raise ValueError("lookback_period must be at least 2")
@@ -62,6 +71,10 @@ class MomentumStrategy(Strategy):
             raise ValueError("top_n + bottom_n exceeds number of symbols")
 
         self._bar_count: int = 0
+        self._high_water: dict[str, float] = {}
+        # Portfolio-level circuit breaker state
+        self._portfolio_peak: float = 0.0
+        self._cooldown_until: int = 0  # bar count when cooldown ends
 
     def calculate_signals(
         self,
@@ -73,10 +86,32 @@ class MomentumStrategy(Strategy):
 
         if self._bar_count < self.min_bars:
             return []
-        if self._bar_count % self.rebalance_frequency != 0:
-            return []
 
-        # Regime filter: check if market is in a downtrend
+        # Portfolio-level circuit breaker
+        if self.portfolio_stop_pct > 0:
+            portfolio_value = self._estimate_portfolio_value(data_handler)
+            if portfolio_value > self._portfolio_peak:
+                self._portfolio_peak = portfolio_value
+            if self._portfolio_peak > 0:
+                dd = (self._portfolio_peak - portfolio_value) / self._portfolio_peak
+                if dd >= self.portfolio_stop_pct:
+                    # Exit everything and start cooldown
+                    self._cooldown_until = self._bar_count + self.cooldown_bars
+                    self._portfolio_peak = 0.0  # Reset peak after cooldown
+                    return self._exit_all(timestamp)
+
+        # During cooldown: stay flat
+        if self._bar_count < self._cooldown_until:
+            return self._exit_all(timestamp)
+
+        # Check trailing stops every bar
+        signals = self._check_stops(timestamp, data_handler)
+
+        # Only rebalance on schedule
+        if self._bar_count % self.rebalance_frequency != 0:
+            return signals
+
+        # Regime filter
         risk_off = self._is_risk_off(data_handler)
 
         # Compute trailing returns for each symbol
@@ -90,16 +125,14 @@ class MomentumStrategy(Strategy):
             returns[symbol] = ret
 
         if not returns:
-            return []
+            return signals
 
         ranked = sorted(returns.keys(), key=lambda s: returns[s], reverse=True)
 
         if risk_off:
-            # Bear regime: exit everything, don't enter
             long_symbols: set[str] = set()
             short_symbols: set[str] = set()
         else:
-            # Filter top_n by min_return threshold
             long_symbols = set()
             for s in ranked[: self.top_n]:
                 if returns[s] >= self.min_return:
@@ -108,14 +141,16 @@ class MomentumStrategy(Strategy):
                 set(ranked[-self.bottom_n :]) if self.bottom_n > 0 else set()
             )
 
-        signals: list[SignalEvent] = []
+        stopped_out = {s.symbol for s in signals}
 
         for symbol in self.symbols:
+            if symbol in stopped_out:
+                continue
+
             pos = self.current_positions.get(symbol, 0)
 
             if symbol in long_symbols:
                 if pos <= 0:
-                    # Normalise strength by rank position within long bucket
                     idx = ranked.index(symbol)
                     strength = 1.0 - idx / max(len(ranked), 1)
                     signals.append(
@@ -123,6 +158,9 @@ class MomentumStrategy(Strategy):
                             timestamp, symbol, SignalType.LONG, strength=strength
                         )
                     )
+                    # Set high water mark at entry
+                    bars = data_handler.get_latest_bars(symbol, 1)
+                    self._high_water[symbol] = float(bars["close"].iloc[-1])
             elif symbol in short_symbols:
                 if pos >= 0:
                     idx = ranked.index(symbol)
@@ -132,24 +170,73 @@ class MomentumStrategy(Strategy):
                             timestamp, symbol, SignalType.SHORT, strength=strength
                         )
                     )
+                    bars = data_handler.get_latest_bars(symbol, 1)
+                    self._high_water[symbol] = float(bars["close"].iloc[-1])
             else:
-                # Not in long or short bucket — exit any position
                 if pos != 0:
                     signals.append(
                         self._create_signal(
                             timestamp, symbol, SignalType.EXIT, strength=1.0
                         )
                     )
+                    self._high_water.pop(symbol, None)
+
+        return signals
+
+    def _check_stops(
+        self,
+        timestamp: datetime,
+        data_handler: DataHandler,
+    ) -> list[SignalEvent]:
+        """Check percentage trailing stop for all open positions."""
+        if self.trailing_stop_pct <= 0:
+            return []
+
+        signals: list[SignalEvent] = []
+
+        for symbol in self.symbols:
+            pos = self.current_positions.get(symbol, 0)
+            if pos == 0 or symbol not in self._high_water:
+                continue
+
+            bars = data_handler.get_latest_bars(symbol, 1)
+            if bars.empty:
+                continue
+
+            price = float(bars["close"].iloc[-1])
+
+            if pos > 0:
+                hw = self._high_water[symbol]
+                if price > hw:
+                    self._high_water[symbol] = price
+                    hw = price
+                drawdown = (hw - price) / hw
+                if drawdown >= self.trailing_stop_pct:
+                    signals.append(
+                        self._create_signal(
+                            timestamp, symbol, SignalType.EXIT, strength=1.0
+                        )
+                    )
+                    self._high_water.pop(symbol, None)
+
+            elif pos < 0:
+                lw = self._high_water[symbol]
+                if price < lw:
+                    self._high_water[symbol] = price
+                    lw = price
+                drawup = (price - lw) / lw if lw > 0 else 0
+                if drawup >= self.trailing_stop_pct:
+                    signals.append(
+                        self._create_signal(
+                            timestamp, symbol, SignalType.EXIT, strength=1.0
+                        )
+                    )
+                    self._high_water.pop(symbol, None)
 
         return signals
 
     def _is_risk_off(self, data_handler: DataHandler) -> bool:
-        """Check if the market regime is bearish.
-
-        Computes an equal-weighted average close across all symbols and
-        compares it to its SMA.  Returns True (risk-off) if the average
-        is below the SMA.
-        """
+        """Check if the market regime is bearish."""
         if self.regime_sma_period <= 0:
             return False
 
@@ -170,3 +257,34 @@ class MomentumStrategy(Strategy):
         avg_close = np.mean(closes_list)
         avg_sma = np.mean(sma_list)
         return bool(avg_close < avg_sma)
+
+    def _estimate_portfolio_value(self, data_handler: DataHandler) -> float:
+        """Estimate current portfolio value from position prices.
+
+        Returns sum of abs(position * price) for all open positions.
+        Used for the portfolio-level circuit breaker.
+        """
+        value = 0.0
+        for symbol in self.symbols:
+            pos = self.current_positions.get(symbol, 0)
+            if pos == 0:
+                continue
+            bars = data_handler.get_latest_bars(symbol, 1)
+            if bars.empty:
+                continue
+            value += abs(pos) * float(bars["close"].iloc[-1])
+        return value
+
+    def _exit_all(self, timestamp: datetime) -> list[SignalEvent]:
+        """Exit all open positions."""
+        signals: list[SignalEvent] = []
+        for symbol in self.symbols:
+            pos = self.current_positions.get(symbol, 0)
+            if pos != 0:
+                signals.append(
+                    self._create_signal(
+                        timestamp, symbol, SignalType.EXIT, strength=1.0
+                    )
+                )
+                self._high_water.pop(symbol, None)
+        return signals
