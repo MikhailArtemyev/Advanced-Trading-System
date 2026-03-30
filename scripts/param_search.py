@@ -4,7 +4,6 @@
 Tests different configurations and reports results.
 """
 
-import copy
 import sys
 from pathlib import Path
 
@@ -108,7 +107,11 @@ def run_one(config_path: str, overrides: dict | None = None) -> dict:
     n = len(eq_values)
     recent_start = int(n * 0.8)
     if recent_start < n and float(eq_values[recent_start]) > 0:
-        recent_return = (float(eq_values[-1]) - float(eq_values[recent_start])) / float(eq_values[recent_start]) * 100
+        recent_return = (
+            (float(eq_values[-1]) - float(eq_values[recent_start]))
+            / float(eq_values[recent_start])
+            * 100
+        )
     else:
         recent_return = 0.0
 
@@ -125,28 +128,81 @@ def main() -> None:
     cfg = "configs/live/alpaca_momentum_config.yaml"
 
     # Round 4: focused on best combinations
-    b = {"strategy.top_n": 7, "strategy.trailing_stop_pct": 0.10,
-         "strategy.lookback_period": 20, "sizing.max_position_fraction": 0.12}
+    b = {
+        "strategy.top_n": 7,
+        "strategy.trailing_stop_pct": 0.10,
+        "strategy.lookback_period": 20,
+        "sizing.max_position_fraction": 0.12,
+    }
     tests = {
         # Baselines
-        "BASELINE (no filters)":  {**b},
+        "BASELINE (no filters)": {**b},
         # SMA100 was best regime filter (SMA50 kills 5yr)
-        "sma100":                 {**b, "strategy.regime_sma_period": 100},
-        "sma100 mr1%":            {**b, "strategy.regime_sma_period": 100, "strategy.min_return": 0.01},
-        "sma100 mr2%":            {**b, "strategy.regime_sma_period": 100, "strategy.min_return": 0.02},
-        "sma100 cd10":            {**b, "strategy.regime_sma_period": 100, "strategy.crash_lookback": 10, "strategy.crash_threshold": -0.05, "strategy.recovery_bars": 3},
-        "sma100 mr1% cd10":      {**b, "strategy.regime_sma_period": 100, "strategy.min_return": 0.01, "strategy.crash_lookback": 10, "strategy.crash_threshold": -0.05, "strategy.recovery_bars": 3},
+        "sma100": {**b, "strategy.regime_sma_period": 100},
+        "sma100 mr1%": {
+            **b,
+            "strategy.regime_sma_period": 100,
+            "strategy.min_return": 0.01,
+        },
+        "sma100 mr2%": {
+            **b,
+            "strategy.regime_sma_period": 100,
+            "strategy.min_return": 0.02,
+        },
+        "sma100 cd10": {
+            **b,
+            "strategy.regime_sma_period": 100,
+            "strategy.crash_lookback": 10,
+            "strategy.crash_threshold": -0.05,
+            "strategy.recovery_bars": 3,
+        },
+        "sma100 mr1% cd10": {
+            **b,
+            "strategy.regime_sma_period": 100,
+            "strategy.min_return": 0.01,
+            "strategy.crash_lookback": 10,
+            "strategy.crash_threshold": -0.05,
+            "strategy.recovery_bars": 3,
+        },
         # mr1% + cd10 (no regime)
-        "mr1% cd10":             {**b, "strategy.min_return": 0.01, "strategy.crash_lookback": 10, "strategy.crash_threshold": -0.05, "strategy.recovery_bars": 3},
+        "mr1% cd10": {
+            **b,
+            "strategy.min_return": 0.01,
+            "strategy.crash_lookback": 10,
+            "strategy.crash_threshold": -0.05,
+            "strategy.recovery_bars": 3,
+        },
         # SMA 75 (between 50 and 100)
-        "sma75":                  {**b, "strategy.regime_sma_period": 75},
-        "sma75 mr1%":             {**b, "strategy.regime_sma_period": 75, "strategy.min_return": 0.01},
+        "sma75": {**b, "strategy.regime_sma_period": 75},
+        "sma75 mr1%": {
+            **b,
+            "strategy.regime_sma_period": 75,
+            "strategy.min_return": 0.01,
+        },
         # Test with tighter stop + sma100
-        "s8% sma100":             {**b, "strategy.trailing_stop_pct": 0.08, "strategy.regime_sma_period": 100},
-        "s8% sma100 mr1%":        {**b, "strategy.trailing_stop_pct": 0.08, "strategy.regime_sma_period": 100, "strategy.min_return": 0.01},
+        "s8% sma100": {
+            **b,
+            "strategy.trailing_stop_pct": 0.08,
+            "strategy.regime_sma_period": 100,
+        },
+        "s8% sma100 mr1%": {
+            **b,
+            "strategy.trailing_stop_pct": 0.08,
+            "strategy.regime_sma_period": 100,
+            "strategy.min_return": 0.01,
+        },
         # lb30 + sma100
-        "lb30 sma100":            {**b, "strategy.lookback_period": 30, "strategy.regime_sma_period": 100},
-        "lb30 sma100 mr1%":       {**b, "strategy.lookback_period": 30, "strategy.regime_sma_period": 100, "strategy.min_return": 0.01},
+        "lb30 sma100": {
+            **b,
+            "strategy.lookback_period": 30,
+            "strategy.regime_sma_period": 100,
+        },
+        "lb30 sma100 mr1%": {
+            **b,
+            "strategy.lookback_period": 30,
+            "strategy.regime_sma_period": 100,
+            "strategy.min_return": 0.01,
+        },
     }
 
     windows = [
@@ -166,7 +222,9 @@ def main() -> None:
             ov = {**overrides, "start_date": start, "end_date": end}
             try:
                 m = run_one(cfg, ov)
-                print(f"{name:<30} {m['total_return_pct']:>+7.1f}% {m['max_drawdown_pct']:>7.1f}% {m['recent_return_pct']:>+7.1f}% {m['num_trades']:>7}")
+                print(
+                    f"{name:<30} {m['total_return_pct']:>+7.1f}% {m['max_drawdown_pct']:>7.1f}% {m['recent_return_pct']:>+7.1f}% {m['num_trades']:>7}"
+                )
             except Exception as e:
                 print(f"{name:<30} ERROR: {e}")
         print()

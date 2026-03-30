@@ -41,9 +41,7 @@ class CompositeStrategy(Strategy):
 
         mom_params = self.parameters.get("momentum", {})
         mr_params = self.parameters.get("mean_reversion", {})
-        self._dispersion_lookback: int = self.parameters.get(
-            "dispersion_lookback", 20
-        )
+        self._dispersion_lookback: int = self.parameters.get("dispersion_lookback", 20)
         self._dispersion_threshold: float = self.parameters.get(
             "dispersion_threshold", 0.05
         )

@@ -45,6 +45,7 @@ def _build_soak_engine(
         order_manager=om,
         bar_poll_interval=0.005,
         event_poll_interval=0.002,
+        enforce_market_hours=False,
     )
     return engine, dh, portfolio, broker
 

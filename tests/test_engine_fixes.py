@@ -54,6 +54,7 @@ def _make_engine(
         strategy=strategy,
         portfolio=portfolio,
         order_manager=order_manager,
+        enforce_market_hours=False,
     )
     return engine, portfolio, aggregator, data_handler
 

@@ -3,7 +3,6 @@
 
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 from dotenv import load_dotenv
 
@@ -47,10 +46,14 @@ def main() -> None:
             date_str = str(ts)[:10]
             positions = dict(strategy.current_positions)
             open_pos = {k: v for k, v in positions.items() if v != 0}
-            print(f"Bar {bar_count} ({date_str}): {len(signals)} signals, "
-                  f"{len(open_pos)} open positions")
+            print(
+                f"Bar {bar_count} ({date_str}): {len(signals)} signals, "
+                f"{len(open_pos)} open positions"
+            )
             for s in signals:
-                print(f"  {s.signal_type.name:<6} {s.symbol:<8} strength={s.strength:.2f}")
+                print(
+                    f"  {s.signal_type.name:<6} {s.symbol:<8} strength={s.strength:.2f}"
+                )
 
         # Print position summary every 25 bars
         if bar_count % 25 == 0:
