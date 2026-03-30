@@ -79,6 +79,7 @@ def _make_engine(
         risk_manager=risk_manager,
         event_poll_interval=0.001,
         bar_poll_interval=0.001,
+        enforce_market_hours=False,
     )
 
 
@@ -579,6 +580,7 @@ class TestIntegration:
             order_manager=om,
             event_poll_interval=0.001,
             bar_poll_interval=0.001,
+            enforce_market_hours=False,
         )
 
         # Manually push a market event and process the full chain
@@ -638,6 +640,7 @@ class TestIntegration:
             order_manager=om,
             event_poll_interval=0.001,
             bar_poll_interval=0.001,
+            enforce_market_hours=False,
         )
 
         base = datetime(2025, 1, 15, 10, 0, 0)

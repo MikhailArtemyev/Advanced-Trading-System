@@ -99,7 +99,11 @@ def run_backtest(config_path: str) -> dict:
     n = len(eq_values)
     recent_start = int(n * 0.8)
     if recent_start < n and float(eq_values[recent_start]) > 0:
-        recent_return = (float(eq_values[-1]) - float(eq_values[recent_start])) / float(eq_values[recent_start]) * 100
+        recent_return = (
+            (float(eq_values[-1]) - float(eq_values[recent_start]))
+            / float(eq_values[recent_start])
+            * 100
+        )
     else:
         recent_return = 0.0
 

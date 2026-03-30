@@ -1,47 +1,69 @@
-# Alpaca Paper Trading Configuration
-# Mean-Variance Optimized MultiAsset SMA — best Sharpe (0.683), +44.6% return
+# Alpaca Paper Trading — Cross-Sectional Momentum (optimized)
+# Ranks 28 stocks by 20-day trailing return, longs top 7
+# 10% trailing stop per position + 100-day SMA regime filter
+# Regime filter: stay flat when universe average is below 100-day SMA
+# Backtested: +5.1% / 13% DD (1yr), +34.2% / 13% DD (2yr), +242% / 19% DD (5yr)
 
 data:
   symbols:
+    # Tech mega-caps
     - AAPL
     - MSFT
     - GOOGL
     - AMZN
     - META
-    # High volatility
+    # Semiconductors
     - NVDA
-    - TSLA
-    - MARA
-    - COIN
-    - SMCI
-    # Moderate volatility
     - AMD
-    - SHOP
+    - AVGO
+    - QCOM
+    # High-beta tech
+    - TSLA
     - PLTR
-    - ROKU
+    - SMCI
+    - COIN
+    - MARA
+    # Finance
+    - JPM
+    - GS
+    - V
+    - MA
+    # Healthcare
+    - UNH
+    - LLY
+    - ABBV
+    # Energy
+    - XOM
+    - CVX
+    # Consumer
+    - COST
+    - WMT
+    # Safe havens
+    - GLD
+    - TLT
   data_source: ""
   start_date: ""
   end_date: ""
 
 execution:
-  initial_capital: 10000
+  initial_capital: 100000
   commission_pct: 0.001
   slippage_pct: 0.0003
 
 strategy:
-  name: "ml_filtered"
+  name: "momentum"
   parameters:
-    base_strategy: "mean_reversion"
-    model_path: "models/ml_filter.joblib"
-    threshold: 0.65
     lookback_period: 20
-    entry_threshold: 2.0
-    exit_threshold: 0.5
-    max_holding_period: 10
-    stop_loss_atr: 1.5
-    take_profit_atr: 3.0
-    adx_max: 25.0
-    atr_period: 14
+    top_n: 7
+    bottom_n: 0
+    rebalance_frequency: 5
+    min_bars: 25
+    min_return: 0.0
+    regime_sma_period: 100
+    trailing_stop_pct: 0.10
+    crash_lookback: 0
+    crash_threshold: -0.05
+    recovery_bars: 3
 
 sizing:
   method: "volatility"
@@ -49,11 +71,11 @@ sizing:
     risk_fraction: 0.02
     atr_period: 14
     atr_multiplier: 2.0
-    max_position_fraction: 0.15
+    max_position_fraction: 0.12
 
 risk:
   enabled: true
-  max_position_pct: 0.40
+  max_position_pct: 0.25
   max_portfolio_exposure_pct: 1.0
   max_daily_loss_pct: 0.03
   max_drawdown_pct: 0.15
@@ -62,18 +84,24 @@ risk:
 
 optimization:
   method: "mean_variance"
-  rebalance_frequency: 20
+  rebalance_frequency: 5
   parameters:
     target: "max_sharpe"
-    max_weight: 0.40
+    max_weight: 0.25
 
 live:
   data:
-    bar_interval_seconds: 300
+    bar_interval_seconds: 86400
   broker:
     broker_type: "alpaca"
     paper_mode: true
   database:
-    enabled: false
+    enabled: true
     db_url: "sqlite:///trading.db"
     save_interval_seconds: 300
+  alerts:
+    enabled: true
+    min_level: "info"
+    cooldown_seconds: 60
+    channels:
+      - type: "telegram"

@@ -91,6 +91,7 @@ def _build_engine(
         risk_manager=risk_manager,
         bar_poll_interval=0.01,
         event_poll_interval=0.005,
+        enforce_market_hours=False,
     )
     return engine, data_handler, portfolio, broker, order_manager
 

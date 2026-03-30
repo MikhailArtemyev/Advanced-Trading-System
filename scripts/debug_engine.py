@@ -19,7 +19,6 @@ from scripts.utils import (
 )
 from src.backtest.engine import BacktestEngine
 from src.config import load_config
-from src.events.event import EventType, FillEvent, SignalEvent
 from src.execution.execution_handler import ExecutionHandler
 from src.performance.metrics import PerformanceTracker
 from src.portfolio.portfolio import Portfolio
@@ -39,22 +38,28 @@ def main() -> None:
 
     # Monkey-patch update_position to log calls
     orig_update = strategy.update_position
+
     def traced_update(symbol: str, quantity: int) -> None:
         print(f"  [UPDATE_POS] {symbol} -> qty={quantity}")
         orig_update(symbol, quantity)
+
     strategy.update_position = traced_update
 
     # Monkey-patch calculate_signals to log
     orig_calc = strategy.calculate_signals
+
     def traced_calc(timestamp, dh):
         signals = orig_calc(timestamp, dh)
         if signals:
             open_pos = {k: v for k, v in strategy.current_positions.items() if v != 0}
             date = str(timestamp)[:10]
-            print(f"Bar {strategy._bar_count} ({date}): {len(signals)} signals, positions={open_pos}")
+            print(
+                f"Bar {strategy._bar_count} ({date}): {len(signals)} signals, positions={open_pos}"
+            )
             for s in signals:
                 print(f"  {s.signal_type.name:<6} {s.symbol}")
         return signals
+
     strategy.calculate_signals = traced_calc
 
     portfolio = Portfolio(

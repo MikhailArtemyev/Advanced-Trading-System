@@ -11,8 +11,9 @@ as they arrive from the live data feed.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from src.broker.base_broker import BrokerFill, OrderStatus
 from src.broker.order_manager import OrderManager
@@ -61,6 +62,7 @@ class PaperTradingEngine:
         bar_poll_interval: float = 0.1,
         storage: StorageBackend | None = None,
         session_id: str = "",
+        enforce_market_hours: bool = True,
     ) -> None:
         self._data_handler = data_handler
         self._strategy = strategy
@@ -69,6 +71,7 @@ class PaperTradingEngine:
         self._risk_manager = risk_manager
         self._event_poll_interval = event_poll_interval
         self._bar_poll_interval = bar_poll_interval
+        self._enforce_market_hours = enforce_market_hours
 
         self._events = EventQueue()
         self._running = False
@@ -84,6 +87,9 @@ class PaperTradingEngine:
         self.orders_submitted = 0
         self.orders_rejected = 0
         self.fills_processed = 0
+
+        # Callbacks
+        self._fill_callbacks: list[Any] = []
 
         # Wire up components
         self._strategy.set_event_queue(self._events)
@@ -134,9 +140,58 @@ class PaperTradingEngine:
         self._running = False
         logger.info("Stop signal sent to paper trading engine")
 
+    @staticmethod
+    def _is_market_open() -> bool:
+        """Check if US stock market is currently open.
+
+        Regular hours: 9:30 AM - 4:00 PM Eastern, Mon-Fri.
+        Does not account for holidays.
+        """
+        et = datetime.now(ZoneInfo("America/New_York"))
+        # Weekend: Saturday=5, Sunday=6
+        if et.weekday() >= 5:
+            return False
+        market_open = time(9, 30)
+        market_close = time(16, 0)
+        return market_open <= et.time() <= market_close
+
+    @staticmethod
+    def _seconds_until_market_open() -> float:
+        """Seconds until next market open (9:30 AM ET, next weekday)."""
+        et = datetime.now(ZoneInfo("America/New_York"))
+        # Start with tomorrow if past today's open
+        target = et.replace(hour=9, minute=30, second=0, microsecond=0)
+        if et.time() >= time(9, 30):
+            target += timedelta(days=1)
+        # Skip weekends
+        while target.weekday() >= 5:
+            target += timedelta(days=1)
+        return max(0.0, (target - et).total_seconds())
+
     async def _bar_poll_loop(self) -> None:
-        """Poll for new bars and emit MarketEvents."""
+        """Poll for new bars and emit MarketEvents.
+
+        Pauses outside US market hours to avoid acting on stale or
+        pre/post-market data.
+        """
         while self._running:
+            if self._enforce_market_hours and not self._is_market_open():
+                wait = self._seconds_until_market_open()
+                wait_hrs = wait / 3600
+                logger.info(
+                    "Market closed — pausing %.1f hours until next open",
+                    wait_hrs,
+                )
+                # Sleep in short chunks so we can respond to stop signals
+                slept = 0.0
+                while slept < wait and self._running:
+                    chunk = min(60.0, wait - slept)
+                    await asyncio.sleep(chunk)
+                    slept += chunk
+                if not self._running:
+                    break
+                logger.info("Market open — resuming bar polling")
+
             if self._data_handler.update_bars():
                 timestamp = self._data_handler.get_current_timestamp()
                 event = MarketEvent(timestamp=timestamp)
@@ -179,8 +234,28 @@ class PaperTradingEngine:
         """Dispatch signal event to portfolio for order generation."""
         self._portfolio.on_signal(event, self._data_handler)
 
+    @staticmethod
+    def _in_opening_auction() -> bool:
+        """Check if within first 5 minutes of market open.
+
+        Opening auctions have wide spreads and unpredictable fills.
+        Delay order submission until 9:35 AM ET.
+        """
+        et = datetime.now(ZoneInfo("America/New_York"))
+        return time(9, 30) <= et.time() < time(9, 35)
+
     async def _handle_order(self, event: OrderEvent) -> None:
         """Check order with risk manager, then submit to broker."""
+        # Delay orders during opening auction (wide spreads, gaps)
+        if self._enforce_market_hours and self._in_opening_auction():
+            logger.info(
+                "Delaying %s %s — opening auction (waiting until 9:35 ET)",
+                event.side.name,
+                event.symbol,
+            )
+            while self._in_opening_auction() and self._running:
+                await asyncio.sleep(10.0)
+
         # Skip if there's already an active (unfilled) order for this symbol
         active_for_symbol = [
             o for o in self._order_manager.active_orders if o.symbol == event.symbol
@@ -293,6 +368,24 @@ class PaperTradingEngine:
                 pos = positions[event.symbol]
                 qty = pos["quantity"] if isinstance(pos, dict) else pos
                 self._strategy.update_position(event.symbol, qty)
+
+        # Notify fill callbacks
+        trade_dict = {
+            "symbol": event.symbol,
+            "side": event.side.name,
+            "quantity": event.quantity,
+            "price": event.fill_price,
+            "pnl": pnl,
+        }
+        for cb in self._fill_callbacks:
+            try:
+                cb(trade_dict)
+            except Exception:
+                logger.debug("Fill callback error", exc_info=True)
+
+    def add_fill_callback(self, callback: Any) -> None:
+        """Register a callback invoked on each fill with a trade dict."""
+        self._fill_callbacks.append(callback)
 
     def get_statistics(self) -> dict[str, Any]:
         """Return engine runtime statistics."""

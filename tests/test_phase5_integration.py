@@ -106,6 +106,7 @@ def _build_engine(
         event_poll_interval=0.005,
         storage=storage,
         session_id=session_id,
+        enforce_market_hours=False,
     )
     return engine, data_handler, portfolio, broker, order_manager
 

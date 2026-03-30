@@ -44,6 +44,12 @@ class StrategyProtocol(Protocol):
         """Set the event queue for emitting signals."""
         ...
 
+    def calculate_signals(
+        self, timestamp: datetime, data_handler: DataHandler
+    ) -> list[Any]:
+        """Generate signals for the current bar."""
+        ...
+
     def on_market_data(self, event: MarketEvent, data_handler: DataHandler) -> None:
         """Handle incoming market data event."""
         ...

@@ -14,6 +14,7 @@ Usage:
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 from datetime import datetime, timedelta
@@ -29,6 +30,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.utils import STRATEGY_MAP, generate_synthetic_ticks
 from src.alerts.alert_manager import AlertPublisher
+from src.alerts.base_alert import AlertLevel, AlertMessage
+from src.alerts.telegram_alert import TelegramAlert
 from src.broker.alpaca_broker import AlpacaBroker
 from src.broker.base_broker import BrokerFill, OrderStatus
 from src.broker.order_manager import OrderManager
@@ -205,6 +208,94 @@ async def monitor_health(
         )
 
 
+async def poll_telegram_commands(
+    stop_event: asyncio.Event,
+    telegram: TelegramAlert,
+    engine: PaperTradingEngine,
+    portfolio: Portfolio,
+    symbols: list[str],
+) -> None:
+    """Poll Telegram for /stats commands from allowed users."""
+    if not telegram._token or not telegram._chat_ids:
+        return
+
+    import aiohttp
+
+    base_url = f"https://api.telegram.org/bot{telegram._token}"
+    offset = 0
+    allowed_ids = set(telegram._chat_ids)
+
+    while not stop_event.is_set():
+        try:
+            session = await telegram._get_session()
+            async with session.get(
+                f"{base_url}/getUpdates",
+                params={"offset": offset, "timeout": 10},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    await asyncio.sleep(5)
+                    continue
+                data = await resp.json()
+
+            for update in data.get("result", []):
+                offset = update["update_id"] + 1
+                msg = update.get("message", {})
+                chat_id = str(msg.get("chat", {}).get("id", ""))
+                text = msg.get("text", "")
+
+                if chat_id not in allowed_ids:
+                    continue
+
+                if text.strip().startswith("/stats"):
+                    stats = engine.get_statistics()
+                    positions = stats.get("positions", {})
+
+                    held = []
+                    for sym, pos in positions.items():
+                        qty = pos["quantity"] if isinstance(pos, dict) else pos
+                        if qty != 0:
+                            if isinstance(pos, dict):
+                                mv = pos.get("market_value", 0)
+                                pnl = pos.get("unrealized_pnl", 0)
+                                held.append(
+                                    f"  {sym}: {qty} shares "
+                                    f"(${mv:,.0f}, PnL ${pnl:+,.0f})"
+                                )
+                            else:
+                                held.append(f"  {sym}: {qty} shares")
+
+                    lines = [
+                        "📊 Trading Stats",
+                        f"Equity: ${stats['equity']:,.2f}",
+                        f"Bars: {stats['bars_processed']}",
+                        f"Orders: {stats['orders_submitted']} "
+                        f"(rejected: {stats['orders_rejected']})",
+                        f"Fills: {stats['fills_processed']}",
+                        f"Uptime: {stats['uptime_seconds']/3600:.1f}h",
+                    ]
+                    if held:
+                        lines.append(f"Positions ({len(held)}):")
+                        lines.extend(held)
+                    else:
+                        lines.append("Positions: none")
+
+                    await telegram.send_text("\n".join(lines))
+
+                elif text.strip().startswith("/help"):
+                    await telegram.send_text(
+                        "📋 Commands:\n"
+                        "/stats — current positions & equity\n"
+                        "/help — this message"
+                    )
+
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.debug("Telegram polling error", exc_info=True)
+            await asyncio.sleep(5)
+
+
 # ---------------------------------------------------------------------------
 # Component builder
 # ---------------------------------------------------------------------------
@@ -376,6 +467,13 @@ async def run_paper_trading(config: BacktestConfig) -> None:
     else:
         logger.info("No previous state found — starting fresh")
 
+    # Telegram notifications
+    telegram: TelegramAlert | None = None
+    if os.environ.get("TELEGRAM_BOT_TOKEN"):
+        telegram = TelegramAlert()
+        alert_publisher.subscribe(telegram, min_level=AlertLevel.INFO)
+        logger.info("Telegram alerts enabled for chats: %s", telegram._chat_ids)
+
     # Health monitor setup
     health_monitor.start()
     health_monitor.add_alert_callback(on_health_alert)
@@ -501,6 +599,35 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         finally:
             await hist_client.close()
 
+    # Wire fill callback for trade notifications
+    def _on_fill(trade: dict[str, Any]) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(alert_publisher.publish_trade(trade))
+        except RuntimeError:
+            pass
+
+    engine.add_fill_callback(_on_fill)
+
+    # Send Telegram "session started" notification
+    if telegram is not None:
+        capital = portfolio.initial_capital
+        sym_list = ", ".join(symbols[:10])
+        if len(symbols) > 10:
+            sym_list += f" (+{len(symbols) - 10} more)"
+        await alert_publisher.publish(
+            AlertMessage(
+                level=AlertLevel.INFO,
+                title="Session started",
+                body=(
+                    f"Strategy: {config.strategy.name}\n"
+                    f"Capital: ${capital:,.0f}\n"
+                    f"Symbols ({len(symbols)}): {sym_list}\n"
+                    f"Broker: {live_cfg.broker.broker_type}"
+                ),
+            )
+        )
+
     tasks: list[Any] = [
         engine.start(),
         periodic_save(stop_event, save_interval, engine, storage, session_id),
@@ -521,6 +648,12 @@ async def run_paper_trading(config: BacktestConfig) -> None:
                 stop_event,
                 engine,
             )
+        )
+
+    # Telegram command listener (responds to /stats, /help)
+    if telegram is not None:
+        tasks.append(
+            poll_telegram_commands(stop_event, telegram, engine, portfolio, symbols)
         )
 
     try:
@@ -574,6 +707,22 @@ async def run_paper_trading(config: BacktestConfig) -> None:
         print(f"  Final equity:      ${stats['equity']:,.2f}")
         print(f"  Health status:     {health_report.status.value}")
         print("=" * 60 + "\n")
+
+        # Send Telegram "session ended" notification
+        if telegram is not None:
+            try:
+                await telegram.send_text(
+                    "🛑 Session ended\n"
+                    f"Equity: ${stats['equity']:,.2f}\n"
+                    f"Bars: {stats['bars_processed']}\n"
+                    f"Orders: {stats['orders_submitted']} "
+                    f"(rejected: {stats['orders_rejected']})\n"
+                    f"Fills: {stats['fills_processed']}\n"
+                    f"Health: {health_report.status.value}"
+                )
+                await telegram.close()
+            except Exception:
+                logger.debug("Failed to send session-end Telegram alert")
 
 
 def main() -> None:
