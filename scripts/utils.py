@@ -23,6 +23,7 @@ from src.risk.position_sizer import (
 )
 from src.risk.risk_manager import RiskLimits, RiskManager
 from src.strategy.base_strategy import Strategy
+from src.strategy.composite import CompositeStrategy
 from src.strategy.mean_reversion import MeanReversionStrategy
 from src.strategy.ml_filtered import MLFilteredStrategy
 from src.strategy.momentum import MomentumStrategy
@@ -37,6 +38,7 @@ STRATEGY_MAP: dict[str, type[Strategy]] = {
     "momentum": MomentumStrategy,
     "pairs_trading": PairsTradingStrategy,
     "ml_filtered": MLFilteredStrategy,
+    "composite": CompositeStrategy,
 }
 
 
