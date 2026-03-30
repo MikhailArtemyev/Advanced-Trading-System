@@ -142,6 +142,11 @@ class MomentumStrategy(Strategy):
 
         stopped_out = {s.symbol for s in signals}
 
+        # IMPORTANT: emit EXIT signals BEFORE LONG/SHORT signals.
+        # Exits free up cash in the portfolio; if longs are queued first,
+        # the portfolio may not have enough cash to fill them.
+        entry_signals: list[SignalEvent] = []
+
         for symbol in self.symbols:
             if symbol in stopped_out:
                 continue
@@ -152,7 +157,7 @@ class MomentumStrategy(Strategy):
                 if pos <= 0:
                     idx = ranked.index(symbol)
                     strength = 1.0 - idx / max(len(ranked), 1)
-                    signals.append(
+                    entry_signals.append(
                         self._create_signal(
                             timestamp, symbol, SignalType.LONG, strength=strength
                         )
@@ -164,7 +169,7 @@ class MomentumStrategy(Strategy):
                 if pos >= 0:
                     idx = ranked.index(symbol)
                     strength = idx / max(len(ranked), 1)
-                    signals.append(
+                    entry_signals.append(
                         self._create_signal(
                             timestamp, symbol, SignalType.SHORT, strength=strength
                         )
@@ -180,6 +185,8 @@ class MomentumStrategy(Strategy):
                     )
                     self._high_water.pop(symbol, None)
 
+        # Exits first, then entries
+        signals.extend(entry_signals)
         return signals
 
     def _check_stops(

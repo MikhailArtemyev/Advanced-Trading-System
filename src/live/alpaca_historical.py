@@ -92,6 +92,7 @@ class AlpacaHistoricalClient:
             "limit": min(limit, 10000),
             "feed": self._feed,
             "sort": "asc",
+            "adjustment": "all",
         }
         if start is not None:
             params["start"] = start.isoformat()
