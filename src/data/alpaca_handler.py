@@ -152,6 +152,7 @@ class AlpacaBarDataHandler(DataHandler):
                 "limit": 10000,
                 "feed": self._feed,
                 "sort": "asc",
+                "adjustment": "all",
             }
             if page_token:
                 params["page_token"] = page_token

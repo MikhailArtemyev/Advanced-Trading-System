@@ -54,6 +54,7 @@ def _make_engine(
         strategy=strategy,
         portfolio=portfolio,
         order_manager=order_manager,
+        enforce_market_hours=False,
     )
     return engine, portfolio, aggregator, data_handler
 
@@ -338,7 +339,7 @@ class TestBrokerSelection:
         from scripts.run_paper_trading import build_components
         from src.config import load_config
 
-        config = load_config("configs/paper_trading_config.yaml")
+        config = load_config("configs/live/paper_trading_config.yaml")
         components = build_components(config)
         # order_manager is index 3
         order_manager = components[3]

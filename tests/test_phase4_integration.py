@@ -91,6 +91,7 @@ def _build_engine(
         risk_manager=risk_manager,
         bar_poll_interval=0.01,
         event_poll_interval=0.005,
+        enforce_market_hours=False,
     )
     return engine, data_handler, portfolio, broker, order_manager
 
@@ -458,7 +459,7 @@ class TestConfigBackwardCompatibility:
     def test_phase1_config_loads(self):
         from src.config import load_config
 
-        config = load_config("configs/backtest_config.yaml")
+        config = load_config("configs/backtest/backtest_config.yaml")
         assert config.data.symbols is not None
         # live section has defaults
         assert config.live.broker.broker_type == "paper"
@@ -466,13 +467,13 @@ class TestConfigBackwardCompatibility:
     def test_phase2_config_loads(self):
         from src.config import load_config
 
-        config = load_config("configs/backtest_baseline.yaml")
+        config = load_config("configs/backtest/backtest_baseline.yaml")
         assert config.live.database.enabled is True
 
     def test_paper_trading_config_loads(self):
         from src.config import load_config
 
-        config = load_config("configs/paper_trading_config.yaml")
+        config = load_config("configs/live/paper_trading_config.yaml")
         assert config.live.broker.broker_type == "paper"
         assert config.live.data.bar_interval_seconds == 60
         assert config.live.database.save_interval_seconds == 300

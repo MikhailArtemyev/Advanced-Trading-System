@@ -6,7 +6,7 @@ market orders to close each one. Supports both long and short positions.
 
 Usage:
     python scripts/close_all_positions.py
-    python scripts/close_all_positions.py --config configs/alpaca_paper_config.yaml
+    python scripts/close_all_positions.py --config configs/live/alpaca_paper_config.yaml
     python scripts/close_all_positions.py --dry-run   # Preview without executing
 """
 
@@ -131,7 +131,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Close all open positions")
     parser.add_argument(
         "--config",
-        default="configs/alpaca_paper_config.yaml",
+        default="configs/live/alpaca_paper_config.yaml",
         help="Path to config YAML (for broker credentials)",
     )
     parser.add_argument(

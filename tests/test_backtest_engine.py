@@ -35,19 +35,29 @@ class MockStrategy:
     def set_event_queue(self, events: EventQueue) -> None:
         self.events = events
 
-    def on_market_data(self, event: MarketEvent, data_handler: DataHandler) -> None:
+    def calculate_signals(
+        self, timestamp: datetime, data_handler: DataHandler
+    ) -> list[SignalEvent]:
         self.bar_count += 1
 
         # Generate a signal every N bars
         if self.bar_count % self.signal_frequency == 0:
-            signal = SignalEvent(
-                timestamp=event.timestamp,
-                symbol=self.symbols[0],
-                signal_type=SignalType.LONG,
-                strength=1.0,
-            )
-            self.events.put(signal)
             self.signals_generated += 1
+            return [
+                SignalEvent(
+                    timestamp=timestamp,
+                    symbol=self.symbols[0],
+                    signal_type=SignalType.LONG,
+                    strength=1.0,
+                )
+            ]
+        return []
+
+    def on_market_data(self, event: MarketEvent, data_handler: DataHandler) -> None:
+        signals = self.calculate_signals(event.timestamp, data_handler)
+        for sig in signals:
+            if self.events is not None:
+                self.events.put(sig)
 
     def update_position(self, symbol: str, quantity: int) -> None:
         self.current_positions[symbol] = quantity

@@ -23,6 +23,7 @@ from ..events.event import (
     MarketEvent,
     OrderEvent,
     OrderSide,
+    SignalType,
 )
 from ..events.queue import EventQueue
 from ..risk.risk_manager import RiskManager
@@ -41,6 +42,12 @@ class StrategyProtocol(Protocol):
 
     def set_event_queue(self, events: EventQueue) -> None:
         """Set the event queue for emitting signals."""
+        ...
+
+    def calculate_signals(
+        self, timestamp: datetime, data_handler: DataHandler
+    ) -> list[Any]:
+        """Generate signals for the current bar."""
         ...
 
     def on_market_data(self, event: MarketEvent, data_handler: DataHandler) -> None:
@@ -276,9 +283,19 @@ class BacktestEngine:
             event: The event to handle
         """
         if event.event_type == EventType.MARKET:
-            # Event is guaranteed to be MarketEvent when event_type is MARKET
-            market_event = MarketEvent(timestamp=event.timestamp)
-            self.strategy.on_market_data(market_event, self.data_handler)
+            # Process signals directly instead of via on_market_data so we
+            # can ensure EXIT signals (sells) fill before LONG signals
+            # (buys) are processed.  This lets sells free up cash first.
+            signals = self.strategy.calculate_signals(
+                event.timestamp, self.data_handler
+            )
+            exits = [s for s in signals if s.signal_type == SignalType.EXIT]
+            entries = [s for s in signals if s.signal_type != SignalType.EXIT]
+            for sig in exits:
+                self.events.put(sig)
+            self._process_events()
+            for sig in entries:
+                self.events.put(sig)
 
         elif event.event_type == EventType.SIGNAL:
             self.portfolio.on_signal(event, self.data_handler)

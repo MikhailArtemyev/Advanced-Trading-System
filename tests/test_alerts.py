@@ -375,9 +375,74 @@ class TestModuleExports:
             AlertMessage,
             AlertPublisher,
             AlertSubscriber,
+            TelegramAlert,
         )
 
         assert AlertLevel is not None
         assert AlertMessage is not None
         assert AlertPublisher is not None
         assert AlertSubscriber is not None
+        assert TelegramAlert is not None
+
+
+# ===========================================================================
+# TelegramAlert
+# ===========================================================================
+
+
+class TestTelegramAlert:
+    def test_init_from_env(self, monkeypatch):
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token")
+        monkeypatch.setenv("TELEGRAM_CHAT_IDS", "111,222")
+
+        from src.alerts.telegram_alert import TelegramAlert
+
+        t = TelegramAlert()
+        assert t._token == "fake-token"
+        assert t._chat_ids == ["111", "222"]
+
+    def test_init_explicit_params(self):
+        from src.alerts.telegram_alert import TelegramAlert
+
+        t = TelegramAlert(token="tok", chat_ids=["999"])
+        assert t._token == "tok"
+        assert t._chat_ids == ["999"]
+
+    def test_format_message(self):
+        from src.alerts.telegram_alert import TelegramAlert
+
+        msg = AlertMessage(
+            level=AlertLevel.INFO,
+            title="Test",
+            body="Hello world",
+        )
+        text = TelegramAlert._format_message(msg)
+        assert "INFO" in text
+        assert "Test" in text
+        assert "Hello world" in text
+
+    @pytest.mark.asyncio
+    async def test_on_alert_no_token_returns_false(self, monkeypatch):
+        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("TELEGRAM_CHAT_IDS", raising=False)
+        from src.alerts.telegram_alert import TelegramAlert
+
+        t = TelegramAlert(token="", chat_ids=[])
+        msg = AlertMessage(level=AlertLevel.INFO, title="x", body="y")
+        assert await t.on_alert(msg) is False
+
+    @pytest.mark.asyncio
+    async def test_test_connection_no_token(self, monkeypatch):
+        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("TELEGRAM_CHAT_IDS", raising=False)
+        from src.alerts.telegram_alert import TelegramAlert
+
+        t = TelegramAlert(token="", chat_ids=[])
+        assert await t.test_connection() is False
+
+    def test_escape_md(self):
+        from src.alerts.telegram_alert import _escape_md
+
+        assert _escape_md("hello") == "hello"
+        assert _escape_md("$100.00") == "$100\\.00"
+        assert _escape_md("a_b") == "a\\_b"

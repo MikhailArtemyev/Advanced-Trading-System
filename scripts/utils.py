@@ -23,6 +23,7 @@ from src.risk.position_sizer import (
 )
 from src.risk.risk_manager import RiskLimits, RiskManager
 from src.strategy.base_strategy import Strategy
+from src.strategy.composite import CompositeStrategy
 from src.strategy.mean_reversion import MeanReversionStrategy
 from src.strategy.ml_filtered import MLFilteredStrategy
 from src.strategy.momentum import MomentumStrategy
@@ -37,6 +38,7 @@ STRATEGY_MAP: dict[str, type[Strategy]] = {
     "momentum": MomentumStrategy,
     "pairs_trading": PairsTradingStrategy,
     "ml_filtered": MLFilteredStrategy,
+    "composite": CompositeStrategy,
 }
 
 
@@ -51,7 +53,7 @@ def build_data_handler(config: BacktestConfig) -> DataHandler:
         )
     elif config.data.data_source == "alpaca":
         bar_secs = config.live.data.bar_interval_seconds
-        tf_map = {60: "1Min", 300: "5Min", 900: "15Min", 3600: "1Hour"}
+        tf_map = {60: "1Min", 300: "5Min", 900: "15Min", 3600: "1Hour", 86400: "1Day"}
         timeframe = tf_map.get(bar_secs, "5Min")
         return AlpacaBarDataHandler(
             symbols=config.data.symbols,

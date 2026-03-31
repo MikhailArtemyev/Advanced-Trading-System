@@ -1,0 +1,110 @@
+# Alpaca Paper Trading — Composite (Momentum + Mean Reversion)
+# Momentum captures trends, mean reversion profits in choppy markets
+# When both agree: strong signal. When they conflict: stay out.
+
+data:
+  symbols:
+    # Tech mega-caps
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - META
+    # Semiconductors
+    - NVDA
+    - AMD
+    - AVGO
+    - QCOM
+    - INTC
+    # High-beta tech
+    - TSLA
+    - SHOP
+    - PLTR
+    - ROKU
+    - SMCI
+    # Finance
+    - JPM
+    - GS
+    - V
+    - MA
+    # Healthcare
+    - UNH
+    - JNJ
+    - LLY
+    - ABBV
+    # Energy
+    - XOM
+    - CVX
+    # Consumer
+    - COST
+    - WMT
+    - NKE
+    # Crypto-adjacent
+    - COIN
+    - MARA
+  data_source: "alpaca"
+  data_path: "data/alpaca_cache"
+  start_date: "2021-03-28"
+  end_date: "2026-03-28"
+
+execution:
+  initial_capital: 100000
+  commission_pct: 0.001
+  slippage_pct: 0.0003
+
+strategy:
+  name: "composite"
+  parameters:
+    momentum:
+      lookback_period: 20
+      top_n: 5
+      bottom_n: 3
+      rebalance_frequency: 5
+      min_bars: 25
+      trailing_stop_pct: 0.08
+    mean_reversion:
+      lookback_period: 20
+      entry_threshold: 2.0
+      exit_threshold: 0.5
+      max_holding_period: 10
+      stop_loss_atr: 1.5
+      take_profit_atr: 3.0
+      adx_max: 25.0
+      atr_period: 14
+    dispersion_lookback: 20
+    dispersion_threshold: 0.05
+
+sizing:
+  method: "volatility"
+  parameters:
+    risk_fraction: 0.02
+    atr_period: 14
+    atr_multiplier: 2.0
+    max_position_fraction: 0.15
+
+risk:
+  enabled: true
+  max_position_pct: 0.25
+  max_portfolio_exposure_pct: 1.0
+  max_daily_loss_pct: 0.03
+  max_drawdown_pct: 0.15
+  max_open_positions: 15
+  max_orders_per_day: 10000
+
+optimization:
+  method: "mean_variance"
+  rebalance_frequency: 5
+  parameters:
+    target: "max_sharpe"
+    max_weight: 0.25
+
+live:
+  data:
+    bar_interval_seconds: 86400
+  broker:
+    broker_type: "alpaca"
+    paper_mode: true
+  database:
+    enabled: false
+    db_url: "sqlite:///trading.db"
+    save_interval_seconds: 300

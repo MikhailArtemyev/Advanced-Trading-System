@@ -106,6 +106,7 @@ def _build_engine(
         event_poll_interval=0.005,
         storage=storage,
         session_id=session_id,
+        enforce_market_hours=False,
     )
     return engine, data_handler, portfolio, broker, order_manager
 
@@ -398,7 +399,7 @@ class TestConfigValidation:
     """Startup validation catches real config problems."""
 
     def test_paper_trading_config_passes_validation(self):
-        config = load_config("configs/paper_trading_config.yaml")
+        config = load_config("configs/live/paper_trading_config.yaml")
         issues = config.validate_for_live()
         errors = [i for i in issues if i.startswith("ERROR:")]
         assert errors == []
@@ -406,7 +407,7 @@ class TestConfigValidation:
     def test_env_vars_resolve_in_loaded_config(self, monkeypatch):
         monkeypatch.setenv("ALPACA_API_KEY", "test_key")
         monkeypatch.setenv("ALPACA_API_SECRET", "test_secret")
-        config = load_config("configs/paper_trading_config.yaml")
+        config = load_config("configs/live/paper_trading_config.yaml")
         # Paper broker doesn't use these, but they should be resolved
         assert config.live.broker.api_key == "test_key"
         assert config.live.broker.api_secret == "test_secret"

@@ -19,6 +19,9 @@ def label_trades(
     exit_threshold: float = 0.5,
     max_holding_period: int = 10,
     cost_bps: float = 30,
+    stop_loss_atr: float = 1.5,
+    take_profit_atr: float = 2.5,
+    atr_period: int = 14,
 ) -> pd.DataFrame:
     """Simulate mean-reversion entries and label outcomes.
 
@@ -33,12 +36,17 @@ def label_trades(
         exit_threshold: Z-score threshold for exit.
         max_holding_period: Max bars to hold before force-exit.
         cost_bps: Round-trip cost in basis points (e.g. 30 = 0.30%).
+        stop_loss_atr: Stop-loss distance in ATR multiples (0 to disable).
+        take_profit_atr: Take-profit distance in ATR multiples (0 to disable).
+        atr_period: Lookback for ATR computation.
 
     Returns:
         DataFrame with columns: [timestamp, symbol, signal_type, label]
         plus all feature columns. Only rows with entry signals.
     """
     close = df["close"].values
+    high = df["high"].values
+    low = df["low"].values
     n = len(close)
     cost_pct = cost_bps / 10000.0
 
@@ -71,6 +79,11 @@ def label_trades(
             lookback_period=lookback_period,
             exit_threshold=exit_threshold,
             max_holding_period=max_holding_period,
+            high=high,
+            low=low,
+            stop_loss_atr=stop_loss_atr,
+            take_profit_atr=take_profit_atr,
+            atr_period=atr_period,
         )
 
         # Label: profitable after costs?
@@ -109,15 +122,66 @@ def _simulate_exit(
     lookback_period: int,
     exit_threshold: float,
     max_holding_period: int,
+    high: np.ndarray | None = None,
+    low: np.ndarray | None = None,
+    stop_loss_atr: float = 0.0,
+    take_profit_atr: float = 0.0,
+    atr_period: int = 14,
 ) -> float:
     """Simulate the mean-reversion exit logic to find exit price.
 
-    Mirrors MeanReversionStrategy._evaluate_symbol exit conditions.
+    Mirrors MeanReversionStrategy._evaluate_symbol exit conditions
+    including ATR-based stop-loss and take-profit.
     """
+    entry_price = close[entry_idx]
+
+    # Compute ATR at entry if stop/take-profit enabled
+    atr = 0.0
+    if (
+        (stop_loss_atr > 0 or take_profit_atr > 0)
+        and high is not None
+        and low is not None
+    ):
+        n = min(atr_period, entry_idx)
+        if n >= 1:
+            tr = np.maximum(
+                high[entry_idx - n + 1 : entry_idx + 1]
+                - low[entry_idx - n + 1 : entry_idx + 1],
+                np.maximum(
+                    np.abs(
+                        high[entry_idx - n + 1 : entry_idx + 1]
+                        - close[entry_idx - n : entry_idx]
+                    ),
+                    np.abs(
+                        low[entry_idx - n + 1 : entry_idx + 1]
+                        - close[entry_idx - n : entry_idx]
+                    ),
+                ),
+            )
+            atr = float(np.mean(tr))
+
     for offset in range(1, max_holding_period + 1):
         j = entry_idx + offset
         if j >= len(close):
             return float(close[-1])
+
+        price = float(close[j])
+
+        # Stop-loss check
+        if stop_loss_atr > 0 and atr > 0:
+            stop_dist = atr * stop_loss_atr
+            if signal_type == "LONG" and price <= entry_price - stop_dist:
+                return price
+            if signal_type == "SHORT" and price >= entry_price + stop_dist:
+                return price
+
+        # Take-profit check
+        if take_profit_atr > 0 and atr > 0:
+            tp_dist = atr * take_profit_atr
+            if signal_type == "LONG" and price >= entry_price + tp_dist:
+                return price
+            if signal_type == "SHORT" and price <= entry_price - tp_dist:
+                return price
 
         # Recompute z-score at bar j
         window = close[j - lookback_period + 1 : j + 1]

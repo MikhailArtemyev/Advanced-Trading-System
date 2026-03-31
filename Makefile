@@ -87,37 +87,37 @@ download-data:
 
 # Run backtest (downloads data first if needed)
 run: download-data
-	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_config.yaml
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest/backtest_config.yaml
 
 # Run individual Phase 2 configs
 run-baseline: download-data
-	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_baseline.yaml
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest/backtest_baseline.yaml
 
 run-vol: download-data
-	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_vol.yaml
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest/backtest_phase2_vol.yaml
 
 run-meanvar: download-data
-	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_meanvar.yaml
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest/backtest_phase2_meanvar.yaml
 
 run-riskparity: download-data
-	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest_phase2_riskparity.yaml
+	$(PYTHON) ./scripts/run_backtest.py --config configs/backtest/backtest_phase2_riskparity.yaml
 
-# Run with a custom config file: make run-config CONFIG=configs/my_config.yaml
+# Run with a custom config file: make run-config CONFIG=configs/backtest/my_config.yaml
 run-config: download-data
 	@if [ -z "$(CONFIG)" ]; then echo "Usage: make run-config CONFIG=path/to/config.yaml"; exit 1; fi
 	$(PYTHON) ./scripts/run_backtest.py --config $(CONFIG)
 
 # Paper trading session (synthetic ticks, no live data needed)
 paper:
-	$(PYTHON) ./scripts/run_paper_trading.py --config configs/paper_trading_config.yaml
+	$(PYTHON) ./scripts/run_paper_trading.py --config configs/live/paper_trading_config.yaml
 
 # Paper trading with Alpaca broker (requires .env with API keys)
 paper-alpaca:
-	$(PYTHON) ./scripts/run_paper_trading.py --config configs/alpaca_paper_config.yaml
+	$(PYTHON) ./scripts/run_paper_trading.py --config configs/live/alpaca_paper_config.yaml
 
 # Train ML signal filter (requires .env with Alpaca API keys)
 train-ml:
-	$(PYTHON) ./scripts/train_ml_filter.py --config configs/backtest_intraday_5min.yaml --output models/ml_filter.joblib
+	$(PYTHON) ./scripts/train_ml_filter.py --config configs/backtest/backtest_intraday_5min.yaml --output models/ml_filter.joblib
 
 # Full report: run ALL configs, generate report + charts
 report: download-data

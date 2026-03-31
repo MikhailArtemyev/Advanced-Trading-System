@@ -7,7 +7,7 @@ trains an XGBoost classifier.
 
 Usage:
     python scripts/train_ml_filter.py \\
-        --config configs/backtest_intraday_5min.yaml \\
+        --config configs/backtest/backtest_intraday_5min.yaml \\
         --train-months 6 \\
         --output models/ml_filter.joblib
 """
@@ -38,7 +38,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train ML signal filter")
     parser.add_argument(
         "--config",
-        default="configs/backtest_intraday_5min.yaml",
+        default="configs/backtest/backtest_intraday_5min.yaml",
         help="Config YAML (for symbols, strategy params, Alpaca credentials)",
     )
     parser.add_argument(
@@ -108,6 +108,9 @@ def main() -> None:
             exit_threshold=params.get("exit_threshold", 0.5),
             max_holding_period=params.get("max_holding_period", 10),
             cost_bps=30,
+            stop_loss_atr=params.get("stop_loss_atr", 1.5),
+            take_profit_atr=params.get("take_profit_atr", 2.5),
+            atr_period=params.get("atr_period", 14),
         )
 
         if not labeled.empty:
