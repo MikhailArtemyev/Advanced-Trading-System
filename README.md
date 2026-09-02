@@ -1,6 +1,41 @@
-# Trading System MVP
+# Advanced Trading System
 
-Event-driven backtesting engine and paper trading system for systematic trading strategies.
+An event-driven backtesting and paper-trading engine built around one question: **how do you know a
+backtest result is real?**
+
+Most backtesters will happily tell you that a strategy made money. This one is built to tell you when it
+didn't — when the result came from leakage, from overlapping labels, or from trying enough strategies
+that one of them was always going to look good.
+
+## How it answers that
+
+**Combinatorial purged cross-validation, with embargo.** Financial labels overlap in time, so an ordinary
+train/test split leaks the future into the past. CPCV generates C(N, k) train/test paths, purges training
+samples whose label windows overlap the test set, and embargoes a buffer after each test fold.
+
+**Deflated Sharpe Ratio.** A Sharpe of 2 means little if it is the best of two hundred attempts. DSR
+adjusts the observed Sharpe for the number of trials, the skew and kurtosis of the returns and the length
+of the sample, then asks whether the result survives.
+
+**Walk-forward efficiency.** Compares out-of-sample against in-sample performance across rolling windows.
+A strategy that only works in-sample fails here visibly.
+
+Everything else in the repo — the feature pipeline, the ML models, the regime detection, the execution
+layer — exists to feed those three checks something worth checking.
+
+## At a glance
+
+|  |  |
+|---|---|
+| Source | 68 files, ~10,800 lines of Python |
+| Tests | **1,249**, across 50 files |
+| CI | black · ruff · mypy · pytest on a Python matrix · coverage, on every push |
+| Requires | Python 3.11+ |
+| Modes | Historical backtest · paper trading against live data with a simulated broker |
+
+<!-- TODO: add an equity-curve figure here. One plot from a walk-forward run, saved to docs/equity.png,
+     then:  ![Walk-forward equity curve](docs/equity.png)
+     This is the single highest-value addition to this file. -->
 
 ## How It Works
 
@@ -299,9 +334,13 @@ make run-config CONFIG=path  # Run with a custom config
 3. Implement `connect()`, `disconnect()`, `submit_order()`, `cancel_order()`, `get_order_status()`, `get_positions()`, `get_account_info()`
 4. Add broker type to `BrokerConfig.validate_broker_type()` in `src/config.py`
 
+## AI assistance
+
+Parts of this code and documentation were written with AI assistance.
+
 ## Project Status
 
-Phase 4 COMPLETE — 1349 tests, all checks green.
+Phase 4 complete — 1,249 tests, all checks green.
 
 | Phase | Focus | Tests |
 |-------|-------|-------|
